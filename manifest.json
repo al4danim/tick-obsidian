@@ -1,0 +1,10 @@
+{
+  "id": "tick",
+  "name": "Tick",
+  "version": "0.2.0",
+  "minAppVersion": "1.4.0",
+  "description": "Quick to-do capture and toggle on a local markdown file.",
+  "author": "yaoyi",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}

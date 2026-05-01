@@ -1,0 +1,230 @@
+/* ── Tick Plugin Styles ─────────────────────────────────────────────── */
+
+/* Today view container */
+.tick-today-container {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Header bar */
+.tick-today-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+/* Refresh button */
+.tick-refresh-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+.tick-refresh-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* Section labels (Pending / Done) */
+.tick-section-label {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 12px 0 4px;
+}
+
+/* Individual task row */
+.tick-today-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 4px;
+  gap: 10px;
+  border-radius: 6px;
+  cursor: default;
+  min-height: 44px; /* large touch target for mobile */
+}
+
+.tick-today-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.tick-today-row.done {
+  opacity: 0.55;
+}
+
+.tick-today-row.done .tick-feature-title {
+  text-decoration: line-through;
+}
+
+/* Checkbox — slightly larger for mobile */
+.tick-checkbox {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+/* Row label area */
+.tick-row-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.tick-feature-title {
+  word-break: break-word;
+}
+
+/* Project tag */
+.tick-project {
+  color: var(--text-accent);
+  font-size: 0.85em;
+  flex-shrink: 0;
+}
+
+/* Hint texts */
+.tick-empty-hint,
+.tick-loading,
+.tick-error-hint {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  margin-top: 20px;
+  text-align: center;
+}
+
+/* Error state */
+.tick-error {
+  color: var(--text-error);
+  text-align: center;
+  margin-top: 20px;
+}
+.tick-error-hint {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  margin-top: 6px;
+}
+
+/* Inline add / edit row */
+.tick-input-row {
+  background: var(--background-modifier-hover);
+  border-radius: 6px;
+}
+
+.tick-input-fields {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tick-input-title {
+  flex: 2 1 60%;
+  min-width: 100px;
+  font-size: 1em;
+  padding: 4px 6px;
+}
+
+.tick-input-project {
+  flex: 1 1 30%;
+  min-width: 70px;
+  font-size: 0.95em;
+  padding: 4px 6px;
+}
+
+.tick-input-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.tick-input-actions button {
+  background: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 1em;
+  cursor: pointer;
+  min-height: 32px;
+  min-width: 36px;
+}
+
+.tick-input-save:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.tick-input-delete:hover {
+  background: var(--background-modifier-error);
+  color: var(--text-error);
+}
+
+.tick-input-cancel:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* + / refresh icon buttons in header */
+.tick-add-fab,
+.tick-refresh-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 1.2em;
+  font-weight: 600;
+}
+.tick-add-fab:hover,
+.tick-refresh-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.tick-today-title {
+  font-weight: 600;
+  font-size: 1.1em;
+}
+
+/* Mobile – bump font size for readability */
+@media (max-width: 500px) {
+  .tick-today-row {
+    padding: 12px 4px;
+    min-height: 52px;
+  }
+
+  .tick-feature-title {
+    font-size: 1.05em;
+  }
+
+  .tick-project {
+    font-size: 0.9em;
+  }
+
+  .tick-input-actions button {
+    min-height: 40px;
+    min-width: 44px;
+    padding: 6px 12px;
+  }
+
+  .tick-input-title,
+  .tick-input-project {
+    font-size: 1em;
+    padding: 8px;
+  }
+}
