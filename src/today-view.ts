@@ -342,53 +342,49 @@ export class TodayView extends ItemView {
   }
 
   // Inline add (task=null) or inline edit (task=existing task).
+  // Layout: stacked card with full-width title + project inputs over a
+  // right-aligned action row (Delete pushed to far left when present).
   private renderInputRow(parent: HTMLElement, task: Task | null): void {
-    const row = parent.createDiv({ cls: "tick-today-row tick-input-row" });
+    const row = parent.createDiv({ cls: "tick-input-row" });
 
-    // Static checkbox visual (just to align with sibling rows)
-    const cb = row.createEl("input", { type: "checkbox", cls: "tick-checkbox" });
-    cb.checked = task?.done ?? false;
-    cb.disabled = true;
-    row.createSpan({ cls: "tick-checkbox-visual", attr: { "aria-hidden": "true" } });
-
-    const fields = row.createDiv({ cls: "tick-input-fields" });
-
-    const titleInput = fields.createEl("input", {
+    const titleInput = row.createEl("input", {
       type: "text",
       cls: "tick-input-title",
-      placeholder: "title",
+      attr: { placeholder: "Task title" },
       value: task?.title ?? "",
     });
 
-    const projInput = fields.createEl("input", {
+    const projInput = row.createEl("input", {
       type: "text",
       cls: "tick-input-project",
-      placeholder: "project",
+      attr: { placeholder: "Project (optional)" },
       value: task?.project ?? "",
     });
 
     const actions = row.createDiv({ cls: "tick-input-actions" });
 
-    const saveBtn = actions.createEl("button", {
-      text: "✓",
-      cls: "tick-input-save",
-      attr: { "aria-label": "Save" },
-    });
-
-    const cancelBtn = actions.createEl("button", {
-      text: "✕",
-      cls: "tick-input-cancel",
-      attr: { "aria-label": "Cancel" },
-    });
-
     let delBtn: HTMLButtonElement | null = null;
     if (task && task.id !== null) {
+      // Delete is destructive — gets a separate visual zone (margin-right:
+      // auto in CSS pushes it to the far left of the action row).
       delBtn = actions.createEl("button", {
-        text: "🗑",
+        text: "Delete",
         cls: "tick-input-delete",
         attr: { "aria-label": "Delete" },
       });
     }
+
+    const cancelBtn = actions.createEl("button", {
+      text: "Cancel",
+      cls: "tick-input-cancel",
+      attr: { "aria-label": "Cancel" },
+    });
+
+    const saveBtn = actions.createEl("button", {
+      text: "Save",
+      cls: "tick-input-save",
+      attr: { "aria-label": "Save" },
+    });
 
     const setBusy = (busy: boolean) => {
       saveBtn.disabled = busy;

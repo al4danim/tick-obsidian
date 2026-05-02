@@ -249,67 +249,104 @@
   padding: 6px 16px;
 }
 
-/* Inline add / edit row — looks like a card */
+/* Inline add / edit card — full-width column layout, two inputs stacked
+   over a right-aligned action row. No checkbox visual (editing doesn't
+   change done state — that's a separate gesture). */
 .tick-input-row {
-  background: var(--background-modifier-hover);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  margin: 4px 0;
+  background: var(--background-primary-alt);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  /* Disable swipe + tap-to-edit handlers visually inheriting hover effect */
+  cursor: default;
+}
+.tick-input-row:hover,
+.tick-input-row:active {
+  background: var(--background-primary-alt);
+}
+
+/* Inputs use Obsidian's native form-field look: solid background, 1px
+   border, accent ring on focus. */
+.tick-input-row .tick-input-title,
+.tick-input-row .tick-input-project {
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
-  padding: 8px;
-  gap: 8px;
-  box-shadow: 0 1px 0 var(--background-modifier-border);
-}
-
-.tick-input-fields {
-  flex: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-}
-
-.tick-input-title {
-  flex: 2 1 60%;
-  min-width: 100px;
-  font-size: 1em;
-  padding: 4px 6px;
-}
-
-.tick-input-project {
-  flex: 1 1 30%;
-  min-width: 70px;
+  color: var(--text-normal);
   font-size: 0.95em;
-  padding: 4px 6px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.tick-input-row .tick-input-title {
+  font-weight: 500;
+}
+.tick-input-row .tick-input-project {
+  font-size: 0.9em;
+  color: var(--text-accent);
+}
+.tick-input-row .tick-input-title:focus,
+.tick-input-row .tick-input-project:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--interactive-accent-hover, var(--background-modifier-border-focus));
+}
+.tick-input-row .tick-input-title::placeholder,
+.tick-input-row .tick-input-project::placeholder {
+  color: var(--text-faint);
 }
 
 .tick-input-actions {
   display: flex;
-  gap: 4px;
-  flex-shrink: 0;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .tick-input-actions button {
-  background: none;
-  border: 1px solid var(--background-modifier-border);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
   border-radius: var(--radius-s);
-  padding: 4px 8px;
-  font-size: 1em;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 0.88em;
   cursor: pointer;
-  min-height: 28px;
-  min-width: 32px;
+  min-height: 30px;
+  font-family: inherit;
 }
 
+/* Primary action: Save filled with accent color */
+.tick-input-save {
+  background: var(--interactive-accent) !important;
+  color: var(--text-on-accent) !important;
+  border-color: var(--interactive-accent) !important;
+  font-weight: 600;
+}
 .tick-input-save:hover {
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-}
-
-.tick-input-delete:hover {
-  background: var(--background-modifier-error);
-  color: var(--text-error);
+  background: var(--interactive-accent-hover) !important;
+  border-color: var(--interactive-accent-hover) !important;
 }
 
 .tick-input-cancel:hover {
   background: var(--background-modifier-hover);
+}
+
+/* Destructive action: tint red on hover */
+.tick-input-delete {
+  margin-right: auto;  /* push delete to far left so it's separated from Save/Cancel */
+}
+.tick-input-delete:hover {
+  background: var(--background-modifier-error);
+  color: var(--text-error);
+  border-color: var(--background-modifier-error);
 }
 
 /* Mobile — bump font size + tap target for readability */
@@ -329,13 +366,13 @@
 
   .tick-input-actions button {
     min-height: 40px;
-    min-width: 44px;
-    padding: 6px 12px;
+    padding: 8px 16px;
+    font-size: 0.95em;
   }
 
-  .tick-input-title,
-  .tick-input-project {
+  .tick-input-row .tick-input-title,
+  .tick-input-row .tick-input-project {
     font-size: 1em;
-    padding: 8px;
+    padding: 10px 12px;
   }
 }
