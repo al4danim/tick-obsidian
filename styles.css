@@ -183,7 +183,11 @@
    line-height) keeps button height matching the row exactly — without
    these, mobile WebViews add padding that makes the button taller than
    the row and visually mis-align with the title text. */
-.tick-swipe-action {
+.tick-swipe-action,
+.tick-swipe-action:hover,
+.tick-swipe-action:active,
+.tick-swipe-action:focus,
+.tick-swipe-action:focus-visible {
   position: absolute;
   right: 0;
   top: 0;
@@ -198,15 +202,22 @@
      the Delete word. */
   justify-content: flex-end;
   padding: 0 14px 0 0;
-  background: transparent;
-  color: var(--text-error);
-  text-decoration: underline;
+  /* `!important` forced because Obsidian's core button styles paint
+     `background-color: var(--interactive-normal)` (with hover/active
+     variants) on every `<button>`, which our normal-cascade reset can't
+     beat. The fallback hex (#e74c3c, system red) is for themes that
+     override `--text-error` to a muted/non-red value. */
+  background: transparent !important;
+  background-color: transparent !important;
+  color: var(--text-error, #e74c3c) !important;
+  text-decoration: underline !important;
   text-underline-offset: 3px;
   font-weight: 500;
   font-size: 0.9em;
   appearance: none;
   -webkit-appearance: none;
   border: 0;
+  box-shadow: none !important;
   margin: 0;
   line-height: 1;
   font-family: inherit;
