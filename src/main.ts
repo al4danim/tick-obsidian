@@ -3,9 +3,12 @@ import { TickSettings, DEFAULT_SETTINGS, TickSettingTab } from "./settings";
 import { Store } from "./store";
 import { TodayView, VIEW_TYPE_TODAY } from "./today-view";
 
+const HIDE_STYLE_ID = "tick-hide-folder-style";
+
 export default class TickPlugin extends Plugin {
   settings: TickSettings = { ...DEFAULT_SETTINGS };
   store!: Store;
+  private hideStyleEl: HTMLStyleElement | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -50,10 +53,13 @@ export default class TickPlugin extends Plugin {
     });
 
     this.addSettingTab(new TickSettingTab(this.app, this));
+
+    this.applyHideRule();
   }
 
   async onunload(): Promise<void> {
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_TODAY);
+    this.removeHideRule();
   }
 
   async loadSettings(): Promise<void> {
@@ -64,6 +70,7 @@ export default class TickPlugin extends Plugin {
     await this.saveData(this.settings);
     this.store.setPath(this.settings.tasksPath);
     this.refreshOpenViews();
+    this.applyHideRule();
   }
 
   private async openTodayView(): Promise<TodayView | null> {
@@ -86,5 +93,41 @@ export default class TickPlugin extends Plugin {
         void view.refresh();
       }
     }
+  }
+
+  // Inject a stylesheet that hides the parent folder of tasksPath from
+  // Obsidian's file explorer. Mirrors the visual benefit of the old
+  // .tick/ dot-prefix without breaking Obsidian Sync (which ignores dot dirs).
+  private applyHideRule(): void {
+    this.removeHideRule();
+    if (!this.settings.hideTopFolder) return;
+
+    const path = normalizePath(this.settings.tasksPath);
+    const slash = path.lastIndexOf("/");
+    if (slash <= 0) return; // tasks.md at vault root → nothing to hide
+    const dir = path.slice(0, slash);
+
+    // Escape characters that would break a CSS attribute selector.
+    const escaped = dir.replace(/["\\]/g, "\\$&");
+
+    const css = `
+      .nav-folder:has(> .nav-folder-title[data-path="${escaped}"]) { display: none !important; }
+      .nav-folder-title[data-path="${escaped}"] { display: none !important; }
+    `;
+
+    const el = document.createElement("style");
+    el.id = HIDE_STYLE_ID;
+    el.textContent = css;
+    document.head.appendChild(el);
+    this.hideStyleEl = el;
+  }
+
+  private removeHideRule(): void {
+    if (this.hideStyleEl) {
+      this.hideStyleEl.remove();
+      this.hideStyleEl = null;
+    }
+    // Belt-and-suspenders: catch any leftover from a previous load.
+    document.getElementById(HIDE_STYLE_ID)?.remove();
   }
 }
