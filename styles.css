@@ -94,14 +94,12 @@
   flex-shrink: 0;
 }
 
-/* Project group container */
+/* Project group container — no margin between groups; rows of different
+   projects sit at the same vertical rhythm as rows of the same project. */
 .tick-project-group {
   display: flex;
   flex-direction: column;
   gap: 0;
-}
-.tick-project-group + .tick-project-group {
-  margin-top: 6px;
 }
 
 /* ── Task row ────────────────────────────────────────────────────────
