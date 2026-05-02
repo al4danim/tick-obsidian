@@ -1,13 +1,18 @@
 /* ── Tick Plugin Styles ─────────────────────────────────────────────── */
 
 /* Today view container — zero horizontal padding so rows reach the screen
-   edges; only vertical padding remains. */
+   edges; only vertical padding remains.
+   Background is set explicitly to match rows (which use `--background-primary`
+   for the swipe-reveal opaque base). Without this, the leaf's default
+   background bleeds through gaps (divider margin, project-group gap, padding
+   above phantom row) as a different shade. */
 .tick-today-container {
   padding: 6px 0 20px;
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow-y: auto;
+  background: var(--background-primary);
 }
 
 /* Header bar */
@@ -320,6 +325,13 @@
   color: var(--text-normal);
   border-radius: 0;
   -webkit-tap-highlight-color: transparent;
+  /* iOS Safari gives `<input>` a UA min-height/intrinsic height that's
+     taller than a sibling `<span>` with the same font/line-height. Pin
+     height to the computed line-box so the row in edit/phantom mode is
+     exactly as tall as a row in view mode. */
+  box-sizing: border-box;
+  height: 1.4em;
+  min-height: 0;
 }
 
 /* Same defense at the row-wrapper level — kill any focus-within outlines or
