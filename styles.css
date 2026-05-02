@@ -170,12 +170,12 @@
   will-change: transform;
 }
 
-/* Hidden Delete button revealed when swiped left. Sits behind the row
-   via z-index; row's transform: translateX(-N) reveals it.
-   UA-reset (appearance, border, padding, margin, font, line-height)
-   keeps button height matching the row exactly — without these, mobile
-   WebViews add padding that makes the button taller than the row and
-   visually mis-align with the title text. */
+/* Hidden Delete action revealed when swiped left. No background block —
+   just red underlined "Delete" text, sitting in a transparent slot to the
+   right of the row. UA-reset (appearance, border, padding, margin, font,
+   line-height) keeps button height matching the row exactly — without
+   these, mobile WebViews add padding that makes the button taller than
+   the row and visually mis-align with the title text. */
 .tick-swipe-action {
   position: absolute;
   right: 0;
@@ -185,15 +185,21 @@
   height: 100%;
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: var(--background-modifier-error);
-  color: var(--text-on-accent, #fff);
-  font-weight: 600;
+  /* Right-align with a touch of padding so the text sits inset from the
+     screen edge instead of feeling glued to it, and so there's a visible
+     gap between the row content (which slides left to expose this) and
+     the Delete word. */
+  justify-content: flex-end;
+  padding: 0 14px 0 0;
+  background: transparent;
+  color: var(--text-error);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 500;
   font-size: 0.9em;
   appearance: none;
   -webkit-appearance: none;
   border: 0;
-  padding: 0;
   margin: 0;
   line-height: 1;
   font-family: inherit;
