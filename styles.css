@@ -296,16 +296,21 @@
    default border. The caret is the only visual cue that we're editing. */
 .tick-feature-title-input,
 .tick-feature-title-input:focus,
-.tick-feature-title-input:focus-visible {
+.tick-feature-title-input:focus-visible,
+.tick-feature-title-input:active,
+.tick-feature-title-input:hover {
   flex: 1;
   min-width: 0;
   width: auto;
   appearance: none;
   -webkit-appearance: none;
-  background: transparent;
-  border: 0;
-  outline: 0;
-  box-shadow: none;
+  /* `!important` forced because Obsidian's core stylesheet paints
+     `box-shadow: 0 0 0 1px var(--background-modifier-border-focus)` on
+     `input:focus`, which our normal-cascade reset can't beat. */
+  background: transparent !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
   padding: 0;
   margin: 0;
   font-family: inherit;
@@ -315,6 +320,16 @@
   color: var(--text-normal);
   border-radius: 0;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Same defense at the row-wrapper level — kill any focus-within outlines or
+   shadows Obsidian might paint on the parent when the input has focus. */
+.tick-today-row.is-editing,
+.tick-today-row.is-editing .tick-row-foreground,
+.tick-today-row.is-editing .tick-row-label {
+  outline: 0 !important;
+  box-shadow: none !important;
+  border: 0 !important;
 }
 
 /* Project label — no chip styling; matches title font-size so the row reads
