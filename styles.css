@@ -114,12 +114,30 @@
   position: relative;
   touch-action: pan-y;
   background: var(--background-primary);
+  -webkit-tap-highlight-color: transparent;
   /* Allow children with overflow to truncate */
   min-width: 0;
 }
 
-.tick-today-row:hover {
-  background: var(--background-modifier-hover);
+/* Mouse-only hover. On touch devices iOS makes :hover sticky after tap, which
+   on the active edit row paints a pill-shaped grey background until you tap
+   elsewhere. Gating on (hover: hover) keeps the desktop hover affordance and
+   suppresses the sticky pill on phones/tablets. */
+@media (hover: hover) and (pointer: fine) {
+  .tick-today-row:hover {
+    background: var(--background-modifier-hover);
+  }
+}
+
+/* Belt-and-suspenders: even if some Obsidian/UA stylesheet paints the row
+   while an input inside is focused, force it transparent in edit mode. */
+.tick-today-row.is-editing,
+.tick-today-row.is-editing:hover,
+.tick-today-row.is-editing .tick-row-foreground,
+.tick-today-row.is-editing .tick-row-label {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .tick-today-row.done {
@@ -276,7 +294,9 @@
    Hard-reset every UA default (appearance, border, padding, box-shadow)
    so on iOS Safari the input doesn't get its tiny inset shadow or
    default border. The caret is the only visual cue that we're editing. */
-.tick-feature-title-input {
+.tick-feature-title-input,
+.tick-feature-title-input:focus,
+.tick-feature-title-input:focus-visible {
   flex: 1;
   min-width: 0;
   width: auto;
@@ -294,6 +314,7 @@
   line-height: 1.4;
   color: var(--text-normal);
   border-radius: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Project label — no chip styling; matches title font-size so the row reads
