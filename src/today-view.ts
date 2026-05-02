@@ -3,23 +3,33 @@ import { Store, Task, todayString, splitProjectFromTitle } from "./store";
 
 export const VIEW_TYPE_TODAY = "tick-today";
 
-type InputState =
-  | { mode: "add" }
-  | { mode: "edit"; id: string }
-  | null;
-
 interface ViewSettings {
   groupByProject: boolean;
   enableSwipe: boolean;
 }
 
+// How many recent projects to show as suggestion chips below the editing row.
+const SUGGESTION_LIMIT = 6;
+
 export class TodayView extends ItemView {
   private store: Store;
   private rendering = false;
-  private input: InputState = null;
   private tasks: Task[] = [];
   private streak = 0;
   private getViewSettings: () => ViewSettings;
+
+  // ── Edit / add state ────────────────────────────────────────────────
+  // Which existing task (by id) is currently being edited in-place. null = no edit.
+  private editingId: string | null = null;
+  // When entering edit, which field to focus first (title default).
+  private editFocusField: "title" | "project" = "title";
+  // Sticky add: when true, a phantom row sits at the top of the list. Saving
+  // an entry re-opens a fresh phantom (TUI parity); empty Enter or Esc exits.
+  private phantomActive = false;
+
+  // ── Swipe state ─────────────────────────────────────────────────────
+  // Which row currently has its Delete button revealed (only one at a time).
+  private swipeRevealedId: string | null = null;
 
   constructor(leaf: WorkspaceLeaf, store: Store, getViewSettings: () => ViewSettings) {
     super(leaf);
@@ -51,9 +61,9 @@ export class TodayView extends ItemView {
     await this.render();
   }
 
-  // Public hook so the "Add todo" command can trigger inline add from anywhere.
+  // Public hook for the "Add todo" command — opens sticky add at the top.
   startAdd(): void {
-    this.input = { mode: "add" };
+    this.phantomActive = true;
     void this.render();
   }
 
@@ -88,7 +98,8 @@ export class TodayView extends ItemView {
 
     const body = container.createDiv({ cls: "tick-today-body" });
 
-    if (pending.length === 0 && doneToday.length === 0 && this.input?.mode !== "add") {
+    // Empty state — only shown when no tasks AND no phantom add row.
+    if (pending.length === 0 && doneToday.length === 0 && !this.phantomActive) {
       body.createEl("p", {
         text: "No tasks for today. Tap + to add one.",
         cls: "tick-empty-hint",
@@ -97,15 +108,22 @@ export class TodayView extends ItemView {
       return;
     }
 
-    // Pending block — inline-add row at top, then groups (or flat list).
-    if (pending.length > 0 || this.input?.mode === "add") {
-      if (this.input?.mode === "add") this.renderInputRow(body, null);
+    // Phantom add row sits above all groups, never inside a group.
+    if (this.phantomActive) {
+      this.renderPhantomAdd(body);
+    }
+
+    if (pending.length > 0) {
       this.renderPending(body, pending);
     }
 
     if (doneToday.length > 0) {
       this.renderDoneToday(body, doneToday);
     }
+
+    // Re-focus edit field after re-render. A fresh DOM means we lose focus
+    // every render; this restores it so users can type continuously.
+    this.refocusActiveInput();
 
     this.rendering = false;
   }
@@ -121,14 +139,12 @@ export class TodayView extends ItemView {
       text: "+",
     });
     addBtn.addEventListener("click", () => {
-      this.input = { mode: "add" };
+      this.phantomActive = true;
+      this.editingId = null;
+      this.editFocusField = "title";
       void this.render();
     });
-    // No manual refresh button: vault.on("modify") in main.ts triggers a
-    // re-render automatically whenever tasks.md changes.
 
-    // Streak chip — pill with 🔥 N (or "30+" at the cap). Stays in layout
-    // even when streak is 0, just dimmed via .is-cold.
     const streakChip = header.createSpan({ cls: "tick-streak-chip" });
     if (streak === 0) streakChip.addClass("is-cold");
     streakChip.createSpan({ text: "🔥" });
@@ -143,19 +159,10 @@ export class TodayView extends ItemView {
   private renderPending(body: HTMLElement, pending: Task[]): void {
     const settings = this.getViewSettings();
     if (!settings.groupByProject) {
-      // Flat list — every row is a direct child of body.
-      for (const t of pending) {
-        if (this.input?.mode === "edit" && this.input.id === t.id) {
-          this.renderInputRow(body, t);
-        } else {
-          this.renderRow(body, t);
-        }
-      }
+      for (const t of pending) this.renderRow(body, t);
       return;
     }
 
-    // Group by project: largest groups first; ties broken by first-appearance
-    // index (stable across re-renders); null project always last.
     const groups = new Map<string | null, Task[]>();
     const firstSeen = new Map<string | null, number>();
     pending.forEach((t, i) => {
@@ -168,78 +175,68 @@ export class TodayView extends ItemView {
     });
 
     const ordered = Array.from(groups.entries()).sort((a, b) => {
-      // null group always last
       if (a[0] === null && b[0] !== null) return 1;
       if (b[0] === null && a[0] !== null) return -1;
-      // size desc
       const sizeDiff = b[1].length - a[1].length;
       if (sizeDiff !== 0) return sizeDiff;
-      // tie: first-appearance asc
       return (firstSeen.get(a[0]) ?? 0) - (firstSeen.get(b[0]) ?? 0);
     });
 
     for (const [, tasks] of ordered) {
       const groupEl = body.createDiv({ cls: "tick-project-group" });
-      for (const t of tasks) {
-        if (this.input?.mode === "edit" && this.input.id === t.id) {
-          this.renderInputRow(groupEl, t);
-        } else {
-          this.renderRow(groupEl, t);
-        }
-      }
+      for (const t of tasks) this.renderRow(groupEl, t);
     }
   }
 
   private renderDoneToday(body: HTMLElement, doneToday: Task[]): void {
     const divider = body.createDiv({ cls: "tick-divider" });
     divider.createSpan({ text: `Done today · ${doneToday.length}` });
-    for (const t of doneToday) {
-      if (this.input?.mode === "edit" && this.input.id === t.id) {
-        this.renderInputRow(body, t);
-      } else {
-        this.renderRow(body, t);
-      }
-    }
+    for (const t of doneToday) this.renderRow(body, t);
   }
 
+  // ── Row rendering ───────────────────────────────────────────────────
+
   private renderRow(parent: HTMLElement, task: Task): void {
+    const isEditing = this.editingId === task.id && task.id !== null;
+    const cls =
+      "tick-today-row" +
+      (task.done ? " done" : "") +
+      (isEditing ? " is-editing" : "") +
+      (this.swipeRevealedId === task.id ? " is-swipe-revealed" : "");
+
     const row = parent.createDiv({
-      cls: `tick-today-row${task.done ? " done" : ""}`,
+      cls,
       attr: task.id ? { "data-task-id": task.id } : {},
     });
 
-    // Native checkbox kept for a11y/keyboard, visually hidden via CSS.
-    const checkbox = row.createEl("input", {
-      type: "checkbox",
-      cls: "tick-checkbox",
+    // Swipe-reveal Delete button — sits absolutely behind the foreground
+    // wrapper. Only visible when row has .is-swipe-revealed.
+    const swipeBtn = row.createEl("button", {
+      cls: "tick-swipe-action",
+      text: "Delete",
+      attr: { "aria-label": "Delete task" },
     });
+    swipeBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      void this.handleDelete(task);
+    });
+
+    // Foreground wrapper — what the user sees and what swipe transforms.
+    const fg = row.createDiv({ cls: "tick-row-foreground" });
+
+    // Native checkbox kept for a11y/keyboard.
+    const checkbox = fg.createEl("input", { type: "checkbox", cls: "tick-checkbox" });
     checkbox.checked = task.done;
     checkbox.setAttribute("aria-label", `Toggle: ${task.title}`);
 
-    // Custom visual sibling — the actual circle/check the user sees.
-    const visual = row.createSpan({
+    const visual = fg.createSpan({
       cls: "tick-checkbox-visual",
       attr: { "aria-hidden": "true" },
     });
     visual.addEventListener("click", (ev) => {
       ev.stopPropagation();
+      this.closeSwipeIfOpen();
       checkbox.click();
-    });
-
-    const label = row.createDiv({ cls: "tick-row-label" });
-    label.createSpan({ text: task.title, cls: "tick-feature-title" });
-    if (task.project) {
-      // Leading "@" comes from CSS ::before so we only emit the project name.
-      label.createSpan({ text: task.project, cls: "tick-project" });
-    }
-
-    label.addEventListener("click", () => {
-      if (task.id === null) {
-        new Notice("Row has no ID yet; run tick-tui on Mac to assign one");
-        return;
-      }
-      this.input = { mode: "edit", id: task.id };
-      void this.render();
     });
 
     checkbox.addEventListener("change", async (ev) => {
@@ -261,18 +258,328 @@ export class TodayView extends ItemView {
       }
     });
 
-    if (this.getViewSettings().enableSwipe) {
-      this.attachSwipeHandlers(row, checkbox);
+    const label = fg.createDiv({ cls: "tick-row-label" });
+
+    if (isEditing) {
+      this.renderEditFields(label, row, task);
+    } else {
+      this.renderViewFields(label, task);
+    }
+
+    if (this.getViewSettings().enableSwipe && task.id !== null && !isEditing) {
+      this.attachSwipeHandlers(row, fg, task);
     }
   }
 
-  // Mobile-only swipe-to-toggle gesture. Both directions toggle (avoids
-  // "which way is done" cognitive load). Direction-locked at 8px so vertical
-  // scroll wins ties; commits at 80px past start.
-  private attachSwipeHandlers(row: HTMLElement, checkbox: HTMLInputElement): void {
+  private renderViewFields(label: HTMLElement, task: Task): void {
+    const titleSpan = label.createSpan({ text: task.title, cls: "tick-feature-title" });
+    titleSpan.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (this.swipeRevealedId !== null) {
+        // First tap on a row while another is swiped open just closes the swipe.
+        this.closeSwipeIfOpen();
+        return;
+      }
+      if (task.id === null) {
+        new Notice("Row has no ID yet; run tick-tui on Mac to assign one");
+        return;
+      }
+      this.editingId = task.id;
+      this.editFocusField = "title";
+      void this.render();
+    });
+
+    if (task.project) {
+      const projChip = label.createSpan({ text: task.project, cls: "tick-project" });
+      projChip.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (this.swipeRevealedId !== null) {
+          this.closeSwipeIfOpen();
+          return;
+        }
+        if (task.id === null) {
+          new Notice("Row has no ID yet; run tick-tui on Mac to assign one");
+          return;
+        }
+        this.editingId = task.id;
+        this.editFocusField = "project";
+        void this.render();
+      });
+    }
+  }
+
+  // In-place edit: title and project become bare-looking inputs that visually
+  // align with the original spans. Save on blur/Enter, cancel on Esc.
+  private renderEditFields(label: HTMLElement, row: HTMLElement, task: Task): void {
+    const titleInput = label.createEl("input", {
+      type: "text",
+      cls: "tick-feature-title-input",
+      value: task.title,
+    });
+    titleInput.dataset.tickRole = "title-input";
+
+    const projInput = label.createEl("input", {
+      type: "text",
+      cls: "tick-project-input",
+      value: task.project ?? "",
+      attr: { placeholder: "project" },
+    });
+    projInput.dataset.tickRole = "project-input";
+
+    let committed = false;
+    let cancelled = false;
+
+    const commit = async () => {
+      if (committed || cancelled) return;
+      committed = true;
+      const rawTitle = titleInput.value.trim();
+      const split = splitProjectFromTitle(rawTitle);
+      const newTitle = split.title;
+      const newProject = (projInput.value.trim() || split.project) || null;
+      if (!newTitle) {
+        // Empty title on edit = no-op; just exit edit mode.
+        this.editingId = null;
+        await this.refresh();
+        return;
+      }
+      try {
+        if (task.id !== null) {
+          await this.store.editTask(task.id, { title: newTitle, project: newProject });
+        }
+        this.editingId = null;
+        await this.refresh();
+      } catch (e) {
+        new Notice(`Save failed: ${(e as Error).message}`, 5000);
+        committed = false;
+      }
+    };
+
+    const cancel = () => {
+      if (committed || cancelled) return;
+      cancelled = true;
+      this.editingId = null;
+      void this.render();
+    };
+
+    // Enter commits, Escape cancels. Tab/Shift+Tab switch fields naturally
+    // since both inputs are focusable siblings.
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        void commit();
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        cancel();
+      }
+    };
+    titleInput.addEventListener("keydown", onKey);
+    projInput.addEventListener("keydown", onKey);
+
+    // Commit on blur — but only when neither input remains focused (i.e. user
+    // moved focus away from the row entirely, not just between fields).
+    const onBlur = (ev: FocusEvent) => {
+      const next = ev.relatedTarget as HTMLElement | null;
+      if (next && (next === titleInput || next === projInput || row.contains(next))) {
+        return;
+      }
+      void commit();
+    };
+    titleInput.addEventListener("blur", onBlur);
+    projInput.addEventListener("blur", onBlur);
+
+    // Project suggestion chip bar — appears below the row when project input
+    // has focus. Click to fill.
+    projInput.addEventListener("focus", () => {
+      this.showProjectSuggestions(row, projInput);
+    });
+    projInput.addEventListener("blur", () => {
+      // Defer hide so the user's chip click registers first.
+      setTimeout(() => this.hideProjectSuggestions(row), 150);
+    });
+  }
+
+  // ── Phantom add (sticky) ────────────────────────────────────────────
+
+  private renderPhantomAdd(body: HTMLElement): void {
+    const row = body.createDiv({ cls: "tick-today-row is-phantom is-editing" });
+    const fg = row.createDiv({ cls: "tick-row-foreground" });
+
+    // Disabled checkbox just for visual alignment with sibling rows.
+    const cb = fg.createEl("input", { type: "checkbox", cls: "tick-checkbox" });
+    cb.disabled = true;
+    fg.createSpan({ cls: "tick-checkbox-visual", attr: { "aria-hidden": "true" } });
+
+    const label = fg.createDiv({ cls: "tick-row-label" });
+
+    const titleInput = label.createEl("input", {
+      type: "text",
+      cls: "tick-feature-title-input",
+      attr: { placeholder: "New task..." },
+    });
+    titleInput.dataset.tickRole = "phantom-title";
+
+    const projInput = label.createEl("input", {
+      type: "text",
+      cls: "tick-project-input",
+      attr: { placeholder: "project" },
+    });
+    projInput.dataset.tickRole = "phantom-project";
+
+    let committing = false;
+
+    const commit = async () => {
+      if (committing) return;
+      const rawTitle = titleInput.value.trim();
+      if (!rawTitle) {
+        // Empty Enter / blur exits sticky add (TUI parity).
+        this.phantomActive = false;
+        await this.refresh();
+        return;
+      }
+      committing = true;
+      const split = splitProjectFromTitle(rawTitle);
+      const title = split.title;
+      const project = (projInput.value.trim() || split.project) || null;
+      try {
+        await this.store.addTask({ title, project });
+        // Sticky: re-open a fresh phantom for the next entry.
+        this.phantomActive = true;
+        await this.refresh();
+      } catch (e) {
+        new Notice(`Save failed: ${(e as Error).message}`, 5000);
+        committing = false;
+      }
+    };
+
+    const cancel = () => {
+      this.phantomActive = false;
+      void this.render();
+    };
+
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        void commit();
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        cancel();
+      }
+    };
+    titleInput.addEventListener("keydown", onKey);
+    projInput.addEventListener("keydown", onKey);
+
+    // Commit on blur (when focus leaves the phantom entirely)
+    const onBlur = (ev: FocusEvent) => {
+      const next = ev.relatedTarget as HTMLElement | null;
+      if (next && row.contains(next)) return;
+      void commit();
+    };
+    titleInput.addEventListener("blur", onBlur);
+    projInput.addEventListener("blur", onBlur);
+
+    projInput.addEventListener("focus", () => this.showProjectSuggestions(row, projInput));
+    projInput.addEventListener("blur", () => {
+      setTimeout(() => this.hideProjectSuggestions(row), 150);
+    });
+  }
+
+  // After re-render the DOM is fresh; if we're in edit / phantom mode, restore
+  // focus to the right input so users can type continuously.
+  private refocusActiveInput(): void {
+    if (this.editingId !== null) {
+      const row = this.contentEl.querySelector(
+        `[data-task-id="${cssEscape(this.editingId)}"]`
+      );
+      if (!row) return;
+      const sel =
+        this.editFocusField === "project" ? "project-input" : "title-input";
+      const target = row.querySelector(`[data-tick-role="${sel}"]`) as HTMLInputElement | null;
+      if (target) {
+        requestAnimationFrame(() => {
+          target.focus();
+          target.select();
+        });
+      }
+    } else if (this.phantomActive) {
+      const target = this.contentEl.querySelector(
+        '[data-tick-role="phantom-title"]'
+      ) as HTMLInputElement | null;
+      if (target) {
+        requestAnimationFrame(() => target.focus());
+      }
+    }
+  }
+
+  // ── Project suggestions ─────────────────────────────────────────────
+
+  // Compute most-frequent recently-used projects, capped at SUGGESTION_LIMIT.
+  // Order: count desc, then most recent created/done date.
+  private computeProjectSuggestions(): string[] {
+    const counts = new Map<string, { count: number; last: string }>();
+    for (const t of this.tasks) {
+      if (!t.project) continue;
+      const last = t.doneDate ?? t.created ?? "";
+      const cur = counts.get(t.project);
+      if (cur) {
+        cur.count++;
+        if (last > cur.last) cur.last = last;
+      } else {
+        counts.set(t.project, { count: 1, last });
+      }
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => {
+        if (b[1].count !== a[1].count) return b[1].count - a[1].count;
+        return b[1].last.localeCompare(a[1].last);
+      })
+      .slice(0, SUGGESTION_LIMIT)
+      .map(([name]) => name);
+  }
+
+  private showProjectSuggestions(row: HTMLElement, projInput: HTMLInputElement): void {
+    // Remove any existing suggestion bar
+    row.querySelector(".tick-project-suggestions")?.remove();
+
+    const suggestions = this.computeProjectSuggestions();
+    const bar = row.createDiv({ cls: "tick-project-suggestions" });
+
+    if (suggestions.length === 0) {
+      bar.createSpan({
+        text: "No projects yet — type one to start",
+        cls: "tick-project-suggestion-empty",
+      });
+      return;
+    }
+
+    for (const proj of suggestions) {
+      const chip = bar.createEl("button", {
+        cls: "tick-project-suggestion",
+        text: proj,
+      });
+      chip.addEventListener("mousedown", (ev) => {
+        // mousedown (not click) so we beat the input's blur handler — otherwise
+        // the input commits before our value-set happens.
+        ev.preventDefault();
+        projInput.value = proj;
+        projInput.focus();
+      });
+    }
+  }
+
+  private hideProjectSuggestions(row: HTMLElement): void {
+    row.querySelector(".tick-project-suggestions")?.remove();
+  }
+
+  // ── Swipe-to-reveal-Delete ──────────────────────────────────────────
+
+  // Left swipe (dx < 0) only. Right swipe is intentionally ignored to avoid
+  // colliding with Obsidian mobile's "close right panel" edge gesture. Past
+  // threshold the row stays revealed showing a Delete button (iOS Mail style);
+  // user taps Delete to actually delete (with 5s undo Notice).
+  private attachSwipeHandlers(row: HTMLElement, fg: HTMLElement, task: Task): void {
     if (!("ontouchstart" in window)) return;
 
-    const THRESHOLD = 80;
+    const REVEAL_THRESHOLD = 40;  // px past which we'll commit to revealed state
     const DIRECTION_LOCK = 8;
 
     let startX = 0;
@@ -298,40 +605,45 @@ export class TodayView extends ItemView {
         trackingHorizontal = Math.abs(dx) > Math.abs(dy);
       }
 
-      if (!trackingHorizontal) return; // user is scrolling vertically
+      if (!trackingHorizontal) return;
+
+      // RIGHT-SWIPE GUARD: if user is dragging right, ignore entirely. This
+      // lets Obsidian's edge gesture (close panel) work without our row
+      // stealing the touch.
+      if (dx > 0 && this.swipeRevealedId !== task.id) return;
 
       e.preventDefault();
-      const cap = row.clientWidth;
-      currentX = Math.max(-cap, Math.min(cap, dx));
       row.classList.add("is-swiping");
-      row.style.transform = `translateX(${currentX}px)`;
+
+      // Limit visual: don't track beyond reveal width (-88px).
+      currentX = Math.max(-88, Math.min(0, dx));
+      fg.style.transform = `translateX(${currentX}px)`;
     };
 
     const onEnd = () => {
       if (!trackingHorizontal) {
-        // Vertical scroll path or never moved — just clean up.
         row.classList.remove("is-swiping");
-        row.style.transform = "";
+        fg.style.transform = "";
         return;
       }
 
-      if (Math.abs(currentX) > THRESHOLD) {
-        // Commit: slide row off-screen, then toggle.
-        const sign = currentX > 0 ? 1 : -1;
-        row.classList.add("swipe-confirm");
-        row.style.transition = "transform 150ms";
-        row.style.transform = `translateX(${sign * 100}%)`;
-        setTimeout(() => {
-          checkbox.click();
-        }, 150);
+      row.classList.remove("is-swiping");
+      fg.style.transform = ""; // hand back to CSS class-driven transform
+
+      if (currentX < -REVEAL_THRESHOLD) {
+        // Commit reveal. Close any other revealed row first.
+        if (this.swipeRevealedId !== null && this.swipeRevealedId !== task.id) {
+          const other = this.contentEl.querySelector(
+            `[data-task-id="${cssEscape(this.swipeRevealedId)}"]`
+          );
+          other?.classList.remove("is-swipe-revealed");
+        }
+        this.swipeRevealedId = task.id;
+        row.classList.add("is-swipe-revealed");
       } else {
         // Snap back.
-        row.style.transition = "transform 200ms";
-        row.style.transform = "";
-        setTimeout(() => {
-          row.style.transition = "";
-          row.classList.remove("is-swiping");
-        }, 220);
+        this.swipeRevealedId = null;
+        row.classList.remove("is-swipe-revealed");
       }
     };
 
@@ -339,122 +651,80 @@ export class TodayView extends ItemView {
     row.addEventListener("touchmove", onMove, { passive: false });
     row.addEventListener("touchend", onEnd);
     row.addEventListener("touchcancel", onEnd);
+
+    // Tapping anywhere else on the document closes a revealed swipe.
+    // We hook this once per row, but it only fires while this row is the
+    // revealed one (guarded by the check inside).
+    row.addEventListener("click", (ev) => {
+      // The Delete button has its own click handler with stopPropagation.
+      if (this.swipeRevealedId === task.id && !(ev.target as HTMLElement).closest(".tick-swipe-action")) {
+        this.closeSwipeIfOpen();
+      }
+    });
   }
 
-  // Inline add (task=null) or inline edit (task=existing task).
-  // Layout: stacked card with full-width title + project inputs over a
-  // right-aligned action row (Delete pushed to far left when present).
-  private renderInputRow(parent: HTMLElement, task: Task | null): void {
-    const row = parent.createDiv({ cls: "tick-input-row" });
+  private closeSwipeIfOpen(): void {
+    if (this.swipeRevealedId === null) return;
+    const row = this.contentEl.querySelector(
+      `[data-task-id="${cssEscape(this.swipeRevealedId)}"]`
+    );
+    row?.classList.remove("is-swipe-revealed");
+    this.swipeRevealedId = null;
+  }
 
-    const titleInput = row.createEl("input", {
-      type: "text",
-      cls: "tick-input-title",
-      attr: { placeholder: "Task title" },
-      value: task?.title ?? "",
-    });
+  // ── Delete with undo ────────────────────────────────────────────────
 
-    const projInput = row.createEl("input", {
-      type: "text",
-      cls: "tick-input-project",
-      attr: { placeholder: "Project (optional)" },
-      value: task?.project ?? "",
-    });
-
-    const actions = row.createDiv({ cls: "tick-input-actions" });
-
-    let delBtn: HTMLButtonElement | null = null;
-    if (task && task.id !== null) {
-      // Delete is destructive — gets a separate visual zone (margin-right:
-      // auto in CSS pushes it to the far left of the action row).
-      delBtn = actions.createEl("button", {
-        text: "Delete",
-        cls: "tick-input-delete",
-        attr: { "aria-label": "Delete" },
-      });
+  private async handleDelete(task: Task): Promise<void> {
+    if (task.id === null) return;
+    let result: { line: string; rawIndex: number } | null = null;
+    try {
+      result = await this.store.deleteTask(task.id);
+    } catch (e) {
+      new Notice(`Delete failed: ${(e as Error).message}`, 5000);
+      return;
     }
+    if (!result) return;
 
-    const cancelBtn = actions.createEl("button", {
-      text: "Cancel",
-      cls: "tick-input-cancel",
-      attr: { "aria-label": "Cancel" },
-    });
+    this.swipeRevealedId = null;
+    await this.refresh();
 
-    const saveBtn = actions.createEl("button", {
-      text: "Save",
-      cls: "tick-input-save",
-      attr: { "aria-label": "Save" },
-    });
+    // 5s Undo Notice. Build a DocumentFragment so we can attach a click handler
+    // to the Undo link inside Obsidian's standard Notice toast.
+    const frag = document.createDocumentFragment();
+    const span = document.createElement("span");
+    span.textContent = `Deleted: ${truncateForNotice(task.title)} · `;
+    frag.appendChild(span);
+    const link = document.createElement("a");
+    link.textContent = "Undo";
+    link.style.cursor = "pointer";
+    link.style.fontWeight = "600";
+    link.style.color = "var(--text-on-accent, currentColor)";
+    link.style.textDecoration = "underline";
+    frag.appendChild(link);
 
-    const setBusy = (busy: boolean) => {
-      saveBtn.disabled = busy;
-      cancelBtn.disabled = busy;
-      if (delBtn) delBtn.disabled = busy;
-      titleInput.disabled = busy;
-      projInput.disabled = busy;
-    };
-
-    const cancel = () => {
-      this.input = null;
-      void this.render();
-    };
-
-    const save = async () => {
-      const rawTitle = titleInput.value.trim();
-      // Trailing @project in title field is split out so users can type
-      // "buy milk @home" in one field and it'll work.
-      const split = splitProjectFromTitle(rawTitle);
-      const title = split.title;
-      const project = (projInput.value.trim() || split.project) || null;
-      if (!title) {
-        new Notice("Title cannot be empty");
-        titleInput.focus();
-        return;
-      }
-      setBusy(true);
+    const notice = new Notice(frag, 5000);
+    link.addEventListener("click", async () => {
       try {
-        if (task === null) {
-          await this.store.addTask({ title, project });
-        } else if (task.id !== null) {
-          await this.store.editTask(task.id, { title, project });
-        }
-        this.input = null;
+        await this.store.restoreLine(result!.line, result!.rawIndex);
         await this.refresh();
+        notice.hide();
       } catch (e) {
-        new Notice(`Save failed: ${(e as Error).message}`, 5000);
-        setBusy(false);
+        new Notice(`Undo failed: ${(e as Error).message}`, 5000);
       }
-    };
-
-    const del = async () => {
-      if (!task || task.id === null) return;
-      setBusy(true);
-      try {
-        await this.store.deleteTask(task.id);
-        this.input = null;
-        await this.refresh();
-      } catch (e) {
-        new Notice(`Delete failed: ${(e as Error).message}`, 5000);
-        setBusy(false);
-      }
-    };
-
-    saveBtn.addEventListener("click", save);
-    cancelBtn.addEventListener("click", cancel);
-    if (delBtn) delBtn.addEventListener("click", del);
-
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === "Enter") {
-        ev.preventDefault();
-        void save();
-      } else if (ev.key === "Escape") {
-        ev.preventDefault();
-        cancel();
-      }
-    };
-    titleInput.addEventListener("keydown", onKey);
-    projInput.addEventListener("keydown", onKey);
-
-    requestAnimationFrame(() => titleInput.focus());
+    });
   }
+}
+
+// Best-effort polyfill for CSS.escape() — used when building selectors with
+// task IDs (which are 8-char hex so usually safe, but legacy IDs may include
+// other chars).
+function cssEscape(value: string): string {
+  if (typeof (window as { CSS?: { escape?: (v: string) => string } }).CSS?.escape === "function") {
+    return (window as unknown as { CSS: { escape: (v: string) => string } }).CSS.escape(value);
+  }
+  return value.replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
+}
+
+function truncateForNotice(s: string): string {
+  return s.length > 40 ? s.slice(0, 37) + "…" : s;
 }

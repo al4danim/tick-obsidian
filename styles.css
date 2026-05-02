@@ -1,8 +1,8 @@
 /* ── Tick Plugin Styles ─────────────────────────────────────────────── */
 
-/* Today view container */
+/* Today view container — minimal side gutter so rows use full width. */
 .tick-today-container {
-  padding: 10px 8px 24px;
+  padding: 8px 4px 24px;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -14,8 +14,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
-  padding-bottom: 4px;
+  margin-bottom: 4px;
+  padding: 0 4px;
 }
 
 .tick-today-title {
@@ -24,13 +24,12 @@
   letter-spacing: -0.01em;
 }
 
-/* "+", refresh icon buttons in header */
 .tick-add-fab,
 .tick-refresh-btn {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 4px 6px;
   border-radius: var(--radius-s);
   color: var(--text-muted);
   font-size: 1.2em;
@@ -44,8 +43,7 @@
   color: var(--text-normal);
 }
 
-/* Streak chip — pill on the right side, next to summary. Stays in layout
-   even when the streak is 0 (just dimmed) so the row doesn't jitter. */
+/* Streak chip */
 .tick-streak-chip {
   display: inline-flex;
   align-items: center;
@@ -70,12 +68,12 @@
   flex-shrink: 0;
 }
 
-/* Section divider with inline text — replaces the old uppercase label. */
+/* Section divider with text label */
 .tick-divider {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 14px 2px 6px;
+  margin: 10px 4px 4px;
   color: var(--text-muted);
   font-size: 0.78em;
 }
@@ -90,36 +88,37 @@
   flex-shrink: 0;
 }
 
-/* Project group container — rows inside are tightly packed; group-to-group
-   spacing comes from the adjacent-sibling rule below. */
+/* Project group container */
 .tick-project-group {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
 }
 .tick-project-group + .tick-project-group {
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
-/* Individual task row */
+/* ── Task row ────────────────────────────────────────────────────────
+   Row needs `position: relative` because the swipe-reveal Delete button
+   sits absolutely behind it. `overflow: hidden` clips swipe transform.
+   `touch-action: pan-y` lets browser handle vertical scroll, JS handles
+   horizontal swipe. */
 .tick-today-row {
   display: flex;
   align-items: center;
-  padding: 6px 8px;
-  gap: 10px;
+  padding: 4px 6px;
+  gap: 8px;
   border-radius: var(--radius-s);
   cursor: default;
   position: relative;
-  /* pan-y: browser handles vertical scroll, JS handles horizontal swipe */
   touch-action: pan-y;
+  background: var(--background-primary);
+  /* Allow children with overflow to truncate */
+  min-width: 0;
 }
 
 .tick-today-row:hover {
   background: var(--background-modifier-hover);
-}
-
-.tick-today-row:active {
-  background: var(--background-modifier-active-hover, var(--background-modifier-hover));
 }
 
 .tick-today-row.done {
@@ -130,19 +129,70 @@
   text-decoration: line-through;
 }
 
-/* Swipe states (set/unset by attachSwipeHandlers in today-view.ts) */
+/* Editing state — subtle ring instead of card */
+.tick-today-row.is-editing {
+  background: var(--background-primary-alt);
+  box-shadow: inset 0 0 0 1px var(--background-modifier-border);
+}
+
+/* Swipe states */
 .tick-today-row.is-swiping {
   transition: none;
   will-change: transform;
 }
-.tick-today-row.swipe-confirm {
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  transition: background 150ms, color 150ms;
+
+/* Hidden Delete button revealed when swiped left. Sits behind the row
+   via z-index; row's transform: translateX(-N) reveals it. */
+.tick-swipe-action {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent, #fff);
+  font-weight: 600;
+  font-size: 0.9em;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  z-index: 0;
+  /* Hidden until row is swiped — clip via parent overflow */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 100ms;
+}
+.tick-today-row.is-swipe-revealed .tick-swipe-action {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tick-today-row.is-swipe-revealed .tick-row-foreground {
+  /* row content slides left to reveal the delete button */
+  transform: translateX(-88px);
+  transition: transform 200ms;
+}
+.tick-today-row.is-swiping .tick-row-foreground {
+  transition: none;
 }
 
-/* Native checkbox kept for a11y/keyboard, but visually hidden — replaced by
-   a pure CSS sibling. */
+/* The visible "row content" — checkbox + label — sits in this wrapper so
+   we can transform it independently of the absolutely-positioned delete bg. */
+.tick-row-foreground {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: inherit;
+  border-radius: inherit;
+  position: relative;
+  z-index: 1;
+}
+
+/* Native checkbox — visually hidden, kept for a11y/keyboard */
 .tick-checkbox {
   position: absolute;
   opacity: 0;
@@ -152,7 +202,7 @@
   margin: 0;
 }
 
-/* Custom checkbox visual — round border, accent fill when row is .done. */
+/* Custom checkbox visual */
 .tick-checkbox-visual {
   flex-shrink: 0;
   width: 18px;
@@ -170,8 +220,6 @@
   background: var(--interactive-accent);
   border-color: var(--interactive-accent);
 }
-/* Inline SVG check via mask-image — color comes from currentColor / var(),
-   so no font dependency and no extra DOM. */
 .tick-today-row.done .tick-checkbox-visual::after {
   content: "";
   width: 12px;
@@ -186,16 +234,16 @@
   -webkit-mask-position: center;
   mask-position: center;
 }
-/* Keyboard focus indicator on the visual sibling. */
 .tick-checkbox:focus-visible + .tick-checkbox-visual {
   outline: 2px solid var(--interactive-accent);
   outline-offset: 2px;
 }
 
-/* Row label area */
+/* Row label area — single-line, ellipsis on overflow.
+   `min-width: 0` is critical to let title truncate inside flex. */
 .tick-row-label {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
   flex: 1;
@@ -203,12 +251,32 @@
 }
 
 .tick-feature-title {
-  word-break: break-word;
-  line-height: 1.35;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
   font-size: 0.95em;
 }
 
-/* Project chip — inline pill with dim leading "@". */
+/* In-place edit input — looks like the title text it replaces. */
+.tick-feature-title-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  font-size: 0.95em;
+  line-height: 1.4;
+  color: var(--text-normal);
+  border-bottom: 1px solid var(--interactive-accent);
+}
+
+/* Project chip — pill with dim leading "@" */
 .tick-project {
   display: inline-flex;
   padding: 1px 6px;
@@ -218,11 +286,69 @@
   font-size: 0.78em;
   font-weight: 500;
   flex-shrink: 0;
+  max-width: 40%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
 }
 .tick-project::before {
   content: "@";
   opacity: 0.55;
   margin-right: 1px;
+}
+
+/* In-place project edit input — chip-shaped like the chip it replaces */
+.tick-project-input {
+  flex-shrink: 0;
+  width: 100px;
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-hover);
+  border: 1px solid var(--interactive-accent);
+  outline: none;
+  color: var(--text-accent);
+  font-size: 0.78em;
+  font-weight: 500;
+  font-family: inherit;
+}
+.tick-project-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* Project suggestion chip bar — appears below the editing row when the
+   project input has focus. */
+.tick-project-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px 4px 32px;
+}
+.tick-project-suggestion {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--background-modifier-hover);
+  color: var(--text-accent);
+  font-size: 0.78em;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-family: inherit;
+}
+.tick-project-suggestion:hover {
+  background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+  border-color: var(--background-modifier-border);
+}
+.tick-project-suggestion-empty {
+  color: var(--text-faint);
+  font-size: 0.78em;
+  font-style: italic;
+  padding: 2px 4px;
+}
+
+/* Phantom add row — same shape as a normal row, no checkbox visual fill */
+.tick-today-row.is-phantom {
+  background: var(--background-primary-alt);
+  box-shadow: inset 0 0 0 1px var(--background-modifier-border);
 }
 
 /* Hint texts */
@@ -231,148 +357,51 @@
 .tick-error-hint {
   color: var(--text-muted);
   font-size: 0.9em;
-  padding: 32px 16px;
+  padding: 24px 12px;
   line-height: 1.5;
   text-align: center;
 }
 
-/* Error state */
 .tick-error {
   color: var(--text-error);
   text-align: center;
-  margin-top: 20px;
+  margin-top: 16px;
 }
 .tick-error-hint {
   color: var(--text-muted);
   font-size: 0.85em;
   margin-top: 6px;
-  padding: 6px 16px;
+  padding: 6px 12px;
 }
 
-/* Inline add / edit card — full-width column layout, two inputs stacked
-   over a right-aligned action row. No checkbox visual (editing doesn't
-   change done state — that's a separate gesture). */
-.tick-input-row {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  margin: 4px 0;
-  background: var(--background-primary-alt);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  /* Disable swipe + tap-to-edit handlers visually inheriting hover effect */
-  cursor: default;
-}
-.tick-input-row:hover,
-.tick-input-row:active {
-  background: var(--background-primary-alt);
-}
-
-/* Inputs use Obsidian's native form-field look: solid background, 1px
-   border, accent ring on focus. */
-.tick-input-row .tick-input-title,
-.tick-input-row .tick-input-project {
-  width: 100%;
-  padding: 7px 10px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  color: var(--text-normal);
-  font-size: 0.95em;
-  font-family: inherit;
-  box-sizing: border-box;
-}
-.tick-input-row .tick-input-title {
-  font-weight: 500;
-}
-.tick-input-row .tick-input-project {
-  font-size: 0.9em;
-  color: var(--text-accent);
-}
-.tick-input-row .tick-input-title:focus,
-.tick-input-row .tick-input-project:focus {
-  outline: none;
-  border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 2px var(--interactive-accent-hover, var(--background-modifier-border-focus));
-}
-.tick-input-row .tick-input-title::placeholder,
-.tick-input-row .tick-input-project::placeholder {
-  color: var(--text-faint);
-}
-
-.tick-input-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.tick-input-actions button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 12px;
-  border-radius: var(--radius-s);
-  border: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
-  color: var(--text-normal);
-  font-size: 0.88em;
-  cursor: pointer;
-  min-height: 30px;
-  font-family: inherit;
-}
-
-/* Primary action: Save filled with accent color */
-.tick-input-save {
-  background: var(--interactive-accent) !important;
-  color: var(--text-on-accent) !important;
-  border-color: var(--interactive-accent) !important;
-  font-weight: 600;
-}
-.tick-input-save:hover {
-  background: var(--interactive-accent-hover) !important;
-  border-color: var(--interactive-accent-hover) !important;
-}
-
-.tick-input-cancel:hover {
-  background: var(--background-modifier-hover);
-}
-
-/* Destructive action: tint red on hover */
-.tick-input-delete {
-  margin-right: auto;  /* push delete to far left so it's separated from Save/Cancel */
-}
-.tick-input-delete:hover {
-  background: var(--background-modifier-error);
-  color: var(--text-error);
-  border-color: var(--background-modifier-error);
-}
-
-/* Mobile — bump font size + tap target for readability */
+/* Mobile — bump font slightly, keep tap targets reasonable.
+   Note: padding stays tight; touch target comes from the wider checkbox +
+   row click area, not from padding. */
 @media (max-width: 500px) {
   .tick-today-row {
-    padding: 8px 8px;
-    min-height: 40px;
+    padding: 5px 6px;
   }
 
-  .tick-feature-title {
+  .tick-feature-title,
+  .tick-feature-title-input {
     font-size: 1em;
   }
 
-  .tick-project {
+  .tick-project,
+  .tick-project-input,
+  .tick-project-suggestion {
     font-size: 0.85em;
   }
 
-  .tick-input-actions button {
-    min-height: 40px;
-    padding: 8px 16px;
-    font-size: 0.95em;
+  .tick-checkbox-visual {
+    width: 20px;
+    height: 20px;
   }
 
-  .tick-input-row .tick-input-title,
-  .tick-input-row .tick-input-project {
-    font-size: 1em;
-    padding: 10px 12px;
+  .tick-swipe-action {
+    width: 80px;
+  }
+  .tick-today-row.is-swipe-revealed .tick-row-foreground {
+    transform: translateX(-80px);
   }
 }

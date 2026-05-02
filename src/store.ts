@@ -209,12 +209,27 @@ export class Store {
     await this.writeLines(lines);
   }
 
-  // Delete a task entirely from tasks.md.
-  async deleteTask(id: string): Promise<void> {
+  // Delete a task entirely from tasks.md. Returns the deleted raw line + its
+  // original line index so callers can call restoreLine() to undo the delete.
+  // Returns null if the task wasn't found (already-deleted via another device).
+  async deleteTask(id: string): Promise<{ line: string; rawIndex: number } | null> {
     const { tasks, lines } = await this.load();
     const t = findById(tasks, id);
-    if (!t) return;
-    lines.splice(t.rawIndex, 1);
+    if (!t) return null;
+    const line = lines[t.rawIndex];
+    const rawIndex = t.rawIndex;
+    lines.splice(rawIndex, 1);
+    await this.writeLines(lines);
+    return { line, rawIndex };
+  }
+
+  // Restore a previously-deleted line at its original index. If the file has
+  // since gained more lines past that index (sync from another device, etc.)
+  // the restored line is appended at the end instead.
+  async restoreLine(line: string, rawIndex: number): Promise<void> {
+    const { lines } = await this.load();
+    const idx = Math.min(rawIndex, lines.length);
+    lines.splice(idx, 0, line);
     await this.writeLines(lines);
   }
 
