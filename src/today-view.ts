@@ -8,8 +8,6 @@ interface ViewSettings {
   enableSwipe: boolean;
 }
 
-// How many recent projects to show as suggestion chips below the editing row.
-const SUGGESTION_LIMIT = 6;
 
 export class TodayView extends ItemView {
   private store: Store;
@@ -290,8 +288,10 @@ export class TodayView extends ItemView {
     });
 
     if (task.project) {
-      const projChip = label.createSpan({ text: task.project, cls: "tick-project" });
-      projChip.addEventListener("click", (ev) => {
+      const proj = label.createSpan({ cls: "tick-project" });
+      proj.createSpan({ text: "@", cls: "tick-project-prefix" });
+      proj.createSpan({ text: task.project, cls: "tick-project-name" });
+      proj.addEventListener("click", (ev) => {
         ev.stopPropagation();
         if (this.swipeRevealedId !== null) {
           this.closeSwipeIfOpen();
@@ -318,17 +318,19 @@ export class TodayView extends ItemView {
     });
     titleInput.dataset.tickRole = "title-input";
 
-    // Wrap the project input inside a .tick-project span so the chip's
-    // background/radius/padding and "@" ::before pseudo all stay visible
-    // — only the inner text becomes editable.
-    const projChip = label.createSpan({ cls: "tick-project is-editing-chip" });
-    const projInput = projChip.createEl("input", {
+    const proj = label.createSpan({ cls: "tick-project" });
+    proj.createSpan({ text: "@", cls: "tick-project-prefix" });
+    const wrap = proj.createSpan({ cls: "tick-project-input-wrap" });
+    const projInput = wrap.createEl("input", {
       type: "text",
       cls: "tick-project-input",
       value: task.project ?? "",
       attr: { placeholder: "project" },
     });
+    const mirror = wrap.createSpan({ cls: "tick-project-input-mirror", attr: { "aria-hidden": "true" } });
+    const ghost = wrap.createSpan({ cls: "tick-project-input-ghost", attr: { "aria-hidden": "true" } });
     projInput.dataset.tickRole = "project-input";
+    this.attachProjectGhost(projInput, mirror, ghost);
 
     let committed = false;
     let cancelled = false;
@@ -390,16 +392,6 @@ export class TodayView extends ItemView {
     };
     titleInput.addEventListener("blur", onBlur);
     projInput.addEventListener("blur", onBlur);
-
-    // Project suggestion chip bar — appears below the row when project input
-    // has focus. Click to fill.
-    projInput.addEventListener("focus", () => {
-      this.showProjectSuggestions(row, projInput);
-    });
-    projInput.addEventListener("blur", () => {
-      // Defer hide so the user's chip click registers first.
-      setTimeout(() => this.hideProjectSuggestions(row), 150);
-    });
   }
 
   // ── Phantom add (sticky) ────────────────────────────────────────────
@@ -422,13 +414,18 @@ export class TodayView extends ItemView {
     });
     titleInput.dataset.tickRole = "phantom-title";
 
-    const projChip = label.createSpan({ cls: "tick-project is-editing-chip" });
-    const projInput = projChip.createEl("input", {
+    const proj = label.createSpan({ cls: "tick-project" });
+    proj.createSpan({ text: "@", cls: "tick-project-prefix" });
+    const wrap = proj.createSpan({ cls: "tick-project-input-wrap" });
+    const projInput = wrap.createEl("input", {
       type: "text",
       cls: "tick-project-input",
       attr: { placeholder: "project" },
     });
+    const mirror = wrap.createSpan({ cls: "tick-project-input-mirror", attr: { "aria-hidden": "true" } });
+    const ghost = wrap.createSpan({ cls: "tick-project-input-ghost", attr: { "aria-hidden": "true" } });
     projInput.dataset.tickRole = "phantom-project";
+    this.attachProjectGhost(projInput, mirror, ghost);
 
     let committing = false;
 
@@ -481,11 +478,6 @@ export class TodayView extends ItemView {
     };
     titleInput.addEventListener("blur", onBlur);
     projInput.addEventListener("blur", onBlur);
-
-    projInput.addEventListener("focus", () => this.showProjectSuggestions(row, projInput));
-    projInput.addEventListener("blur", () => {
-      setTimeout(() => this.hideProjectSuggestions(row), 150);
-    });
   }
 
   // After re-render the DOM is fresh; if we're in edit / phantom mode, restore
@@ -515,11 +507,45 @@ export class TodayView extends ItemView {
     }
   }
 
-  // ── Project suggestions ─────────────────────────────────────────────
+  // ── Project ghost autocomplete ──────────────────────────────────────
 
-  // Compute most-frequent recently-used projects, capped at SUGGESTION_LIMIT.
-  // Order: count desc, then most recent created/done date.
-  private computeProjectSuggestions(): string[] {
+  private attachProjectGhost(input: HTMLInputElement, mirror: HTMLElement, ghost: HTMLElement): void {
+    const projects = this.recentProjects();
+    let currentGhost = "";
+
+    const update = () => {
+      const v = input.value;
+      mirror.textContent = v;
+      currentGhost = this.computeGhost(v, projects);
+      ghost.textContent = currentGhost;
+      // Position ghost to start immediately after the typed text.
+      ghost.style.left = mirror.offsetWidth + "px";
+    };
+
+    input.addEventListener("input", update);
+    input.addEventListener("focus", update);
+    input.addEventListener("blur", () => {
+      ghost.textContent = "";
+      currentGhost = "";
+    });
+    input.addEventListener("keydown", (ev) => {
+      if (
+        ev.key === "ArrowRight" &&
+        input.selectionStart === input.value.length &&
+        input.selectionEnd === input.value.length &&
+        currentGhost
+      ) {
+        ev.preventDefault();
+        input.value += currentGhost;
+        update();
+      }
+    });
+    // Trigger an initial update so empty input shows lastProject as ghost.
+    requestAnimationFrame(update);
+  }
+
+  // Projects ordered by most-recent-use first, then frequency.
+  private recentProjects(): string[] {
     const counts = new Map<string, { count: number; last: string }>();
     for (const t of this.tasks) {
       if (!t.project) continue;
@@ -534,45 +560,21 @@ export class TodayView extends ItemView {
     }
     return Array.from(counts.entries())
       .sort((a, b) => {
-        if (b[1].count !== a[1].count) return b[1].count - a[1].count;
-        return b[1].last.localeCompare(a[1].last);
+        const lastDiff = b[1].last.localeCompare(a[1].last);
+        if (lastDiff !== 0) return lastDiff;
+        return b[1].count - a[1].count;
       })
-      .slice(0, SUGGESTION_LIMIT)
       .map(([name]) => name);
   }
 
-  private showProjectSuggestions(row: HTMLElement, projInput: HTMLInputElement): void {
-    // Remove any existing suggestion bar
-    row.querySelector(".tick-project-suggestions")?.remove();
-
-    const suggestions = this.computeProjectSuggestions();
-    const bar = row.createDiv({ cls: "tick-project-suggestions" });
-
-    if (suggestions.length === 0) {
-      bar.createSpan({
-        text: "No projects yet — type one to start",
-        cls: "tick-project-suggestion-empty",
-      });
-      return;
+  private computeGhost(value: string, projects: string[]): string {
+    const lower = value.toLowerCase();
+    for (const p of projects) {
+      if (p.toLowerCase().startsWith(lower) && p.length > value.length) {
+        return p.slice(value.length);
+      }
     }
-
-    for (const proj of suggestions) {
-      const chip = bar.createEl("button", {
-        cls: "tick-project-suggestion",
-        text: proj,
-      });
-      chip.addEventListener("mousedown", (ev) => {
-        // mousedown (not click) so we beat the input's blur handler — otherwise
-        // the input commits before our value-set happens.
-        ev.preventDefault();
-        projInput.value = proj;
-        projInput.focus();
-      });
-    }
-  }
-
-  private hideProjectSuggestions(row: HTMLElement): void {
-    row.querySelector(".tick-project-suggestions")?.remove();
+    return "";
   }
 
   // ── Swipe-to-reveal-Delete ──────────────────────────────────────────
