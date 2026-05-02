@@ -315,8 +315,18 @@ export class TodayView extends ItemView {
       const newTitle = split.title;
       const newProject = split.project;
       if (!newTitle) {
-        this.editingId = null;
-        await this.refresh();
+        // Empty title on edit is invalid. Surface the error and stay in edit
+        // mode so the user can correct or hit Esc to cancel; previously we
+        // silently dismissed the edit, which dropped any in-progress changes.
+        new Notice("Title cannot be empty", 3000);
+        committed = false;
+        // Re-focus the input — blur is what likely triggered this commit, so
+        // the input has lost focus and the keyboard may have collapsed.
+        requestAnimationFrame(() => {
+          titleInput.focus();
+          const end = titleInput.value.length;
+          titleInput.setSelectionRange(end, end);
+        });
         return;
       }
       try {
@@ -429,7 +439,11 @@ export class TodayView extends ItemView {
       );
       if (!row) return;
       const target = row.querySelector('[data-tick-role="title-input"]') as HTMLInputElement | null;
-      if (target) {
+      // Skip the focus call if this input is already the active element.
+      // Calling .focus() again on iOS Safari can cause a brief keyboard
+      // collapse-and-reopen flicker when render() fires while the user is
+      // typing.
+      if (target && document.activeElement !== target) {
         requestAnimationFrame(() => {
           target.focus();
           const end = target.value.length;
@@ -440,7 +454,7 @@ export class TodayView extends ItemView {
       const target = this.contentEl.querySelector(
         '[data-tick-role="phantom-title"]'
       ) as HTMLInputElement | null;
-      if (target) {
+      if (target && document.activeElement !== target) {
         requestAnimationFrame(() => target.focus());
       }
     }
