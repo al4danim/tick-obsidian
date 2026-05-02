@@ -364,6 +364,16 @@
   border: 0 !important;
 }
 
+/* Dim "-Nd" marker on done rows from earlier days. Sits between the title
+   and the @project (or alone, if no project). Mirrors tick-tui's
+   right-side formatting like "-1d @work". */
+.tick-day-marker {
+  color: var(--text-faint);
+  font-size: 0.85em;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
 /* Project label — no chip styling; matches title font-size so the row reads
    as one continuous text line. */
 .tick-project {

@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
-import { Store, Task, todayString, splitProjectFromTitle } from "./store";
+import { Store, Task, todayString, yesterdayString, splitProjectFromTitle } from "./store";
 
 export const VIEW_TYPE_TODAY = "tick-today";
 
@@ -87,15 +87,22 @@ export class TodayView extends ItemView {
     }
 
     const today = todayString();
+    const yesterday = yesterdayString();
     const pending = this.tasks.filter((t) => !t.done);
     const doneToday = this.tasks.filter((t) => t.done && t.doneDate === today);
+    const doneYesterday = this.tasks.filter((t) => t.done && t.doneDate === yesterday);
 
     this.renderHeader(container, this.streak, doneToday.length, pending.length + doneToday.length);
 
     const body = container.createDiv({ cls: "tick-today-body" });
 
     // Empty state — only shown when no tasks AND no phantom add row.
-    if (pending.length === 0 && doneToday.length === 0 && !this.phantomActive) {
+    if (
+      pending.length === 0 &&
+      doneToday.length === 0 &&
+      doneYesterday.length === 0 &&
+      !this.phantomActive
+    ) {
       body.createEl("p", {
         text: "No tasks for today. Tap + to add one.",
         cls: "tick-empty-hint",
@@ -113,8 +120,8 @@ export class TodayView extends ItemView {
       this.renderPending(body, pending);
     }
 
-    if (doneToday.length > 0) {
-      this.renderDoneToday(body, doneToday);
+    if (doneToday.length > 0 || doneYesterday.length > 0) {
+      this.renderDoneSection(body, doneToday, doneYesterday);
     }
 
     // Re-focus edit field after re-render. A fresh DOM means we lose focus
@@ -183,15 +190,32 @@ export class TodayView extends ItemView {
     }
   }
 
-  private renderDoneToday(body: HTMLElement, doneToday: Task[]): void {
+  // Combined "Done" section: today's done rows first, then yesterday's done
+  // rows directly underneath. Yesterday rows carry a dim "-1d" marker on the
+  // right so users can tell them apart at a glance — same layout as tick-tui
+  // (one shared separator, append later-day rows below today's). The divider
+  // count reflects today only; yesterday's rows are extra context, not part
+  // of "today's progress".
+  private renderDoneSection(
+    body: HTMLElement,
+    doneToday: Task[],
+    doneYesterday: Task[],
+  ): void {
     const divider = body.createDiv({ cls: "tick-divider" });
-    divider.createSpan({ text: `Done today · ${doneToday.length}` });
-    for (const t of doneToday) this.renderRow(body, t);
+    if (doneToday.length > 0) {
+      divider.createSpan({ text: `Done today · ${doneToday.length}` });
+    } else {
+      // Only yesterday rows exist (e.g. nothing done today yet) — change the
+      // label so the count isn't a misleading "0".
+      divider.createSpan({ text: `Done -1d · ${doneYesterday.length}` });
+    }
+    for (const t of doneToday) this.renderRow(body, t, 0);
+    for (const t of doneYesterday) this.renderRow(body, t, 1);
   }
 
   // ── Row rendering ───────────────────────────────────────────────────
 
-  private renderRow(parent: HTMLElement, task: Task): void {
+  private renderRow(parent: HTMLElement, task: Task, daysAgo: number = 0): void {
     const isEditing = this.editingId === task.id && task.id !== null;
     const cls =
       "tick-today-row" +
@@ -258,7 +282,7 @@ export class TodayView extends ItemView {
     if (isEditing) {
       this.renderEditFields(label, row, task);
     } else {
-      this.renderViewFields(label, task);
+      this.renderViewFields(label, task, daysAgo);
     }
 
     if (this.getViewSettings().enableSwipe && task.id !== null && !isEditing) {
@@ -266,7 +290,7 @@ export class TodayView extends ItemView {
     }
   }
 
-  private renderViewFields(label: HTMLElement, task: Task): void {
+  private renderViewFields(label: HTMLElement, task: Task, daysAgo: number): void {
     const enterEdit = (ev: Event) => {
       ev.stopPropagation();
       if (this.swipeRevealedId !== null) {
@@ -284,6 +308,17 @@ export class TodayView extends ItemView {
 
     const titleSpan = label.createSpan({ text: task.title, cls: "tick-feature-title" });
     titleSpan.addEventListener("click", enterEdit);
+
+    if (daysAgo > 0) {
+      // Dim "-Nd" marker before @project — mirrors tick-tui's right-side
+      // formatting (`-1d @work`). Hooked to enterEdit so a tap on the marker
+      // doesn't fall through to swipe handling.
+      const marker = label.createSpan({
+        text: `-${daysAgo}d`,
+        cls: "tick-day-marker",
+      });
+      marker.addEventListener("click", enterEdit);
+    }
 
     if (task.project) {
       const proj = label.createSpan({ cls: "tick-project" });

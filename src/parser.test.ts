@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   parseLine,
   marshalLine,
   splitProjectFromTitle,
   todayString,
+  yesterdayString,
   Task,
 } from "./parser";
 
@@ -161,8 +162,32 @@ describe("marshalLine", () => {
   });
 });
 
-describe("todayString", () => {
+describe("todayString / yesterdayString", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("returns YYYY-MM-DD format", () => {
     expect(todayString()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(yesterdayString()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("yesterdayString is one day before todayString", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-03T12:00:00"));
+    expect(todayString()).toBe("2026-05-03");
+    expect(yesterdayString()).toBe("2026-05-02");
+  });
+
+  it("yesterdayString crosses month boundary", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-01T12:00:00"));
+    expect(yesterdayString()).toBe("2026-04-30");
+  });
+
+  it("yesterdayString crosses year boundary", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T12:00:00"));
+    expect(yesterdayString()).toBe("2025-12-31");
   });
 });

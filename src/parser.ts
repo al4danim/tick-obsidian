@@ -93,7 +93,16 @@ export function marshalLine(t: Task): string {
 }
 
 export function todayString(): string {
+  return formatDate(new Date());
+}
+
+export function yesterdayString(): string {
   const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return formatDate(d);
+}
+
+function formatDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
