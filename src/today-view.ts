@@ -19,8 +19,6 @@ export class TodayView extends ItemView {
   // ── Edit / add state ────────────────────────────────────────────────
   // Which existing task (by id) is currently being edited in-place. null = no edit.
   private editingId: string | null = null;
-  // When entering edit, which field to focus first (title default).
-  private editFocusField: "title" | "project" = "title";
   // Sticky add: when true, a phantom row sits at the top of the list. Saving
   // an entry re-opens a fresh phantom (TUI parity); empty Enter or Esc exits.
   private phantomActive = false;
@@ -139,7 +137,6 @@ export class TodayView extends ItemView {
     addBtn.addEventListener("click", () => {
       this.phantomActive = true;
       this.editingId = null;
-      this.editFocusField = "title";
       void this.render();
     });
 
@@ -270,8 +267,7 @@ export class TodayView extends ItemView {
   }
 
   private renderViewFields(label: HTMLElement, task: Task): void {
-    const titleSpan = label.createSpan({ text: task.title, cls: "tick-feature-title" });
-    titleSpan.addEventListener("click", (ev) => {
+    const enterEdit = (ev: Event) => {
       ev.stopPropagation();
       if (this.swipeRevealedId !== null) {
         // First tap on a row while another is swiped open just closes the swipe.
@@ -283,54 +279,30 @@ export class TodayView extends ItemView {
         return;
       }
       this.editingId = task.id;
-      this.editFocusField = "title";
       void this.render();
-    });
+    };
+
+    const titleSpan = label.createSpan({ text: task.title, cls: "tick-feature-title" });
+    titleSpan.addEventListener("click", enterEdit);
 
     if (task.project) {
       const proj = label.createSpan({ cls: "tick-project" });
       proj.createSpan({ text: "@", cls: "tick-project-prefix" });
       proj.createSpan({ text: task.project, cls: "tick-project-name" });
-      proj.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        if (this.swipeRevealedId !== null) {
-          this.closeSwipeIfOpen();
-          return;
-        }
-        if (task.id === null) {
-          new Notice("Row has no ID yet; run tick-tui on Mac to assign one");
-          return;
-        }
-        this.editingId = task.id;
-        this.editFocusField = "project";
-        void this.render();
-      });
+      proj.addEventListener("click", enterEdit);
     }
   }
 
   // In-place edit: title and project become bare-looking inputs that visually
   // align with the original spans. Save on blur/Enter, cancel on Esc.
   private renderEditFields(label: HTMLElement, row: HTMLElement, task: Task): void {
+    const initial = task.project ? `${task.title} @${task.project}` : task.title;
     const titleInput = label.createEl("input", {
       type: "text",
       cls: "tick-feature-title-input",
-      value: task.title,
+      value: initial,
     });
     titleInput.dataset.tickRole = "title-input";
-
-    const proj = label.createSpan({ cls: "tick-project" });
-    proj.createSpan({ text: "@", cls: "tick-project-prefix" });
-    const wrap = proj.createSpan({ cls: "tick-project-input-wrap" });
-    const projInput = wrap.createEl("input", {
-      type: "text",
-      cls: "tick-project-input",
-      value: task.project ?? "",
-      attr: { placeholder: "project" },
-    });
-    const mirror = wrap.createSpan({ cls: "tick-project-input-mirror", attr: { "aria-hidden": "true" } });
-    const ghost = wrap.createSpan({ cls: "tick-project-input-ghost", attr: { "aria-hidden": "true" } });
-    projInput.dataset.tickRole = "project-input";
-    this.attachProjectGhost(projInput, mirror, ghost);
 
     let committed = false;
     let cancelled = false;
@@ -338,12 +310,11 @@ export class TodayView extends ItemView {
     const commit = async () => {
       if (committed || cancelled) return;
       committed = true;
-      const rawTitle = titleInput.value.trim();
-      const split = splitProjectFromTitle(rawTitle);
+      const raw = titleInput.value.trim();
+      const split = splitProjectFromTitle(raw);
       const newTitle = split.title;
-      const newProject = (projInput.value.trim() || split.project) || null;
+      const newProject = split.project;
       if (!newTitle) {
-        // Empty title on edit = no-op; just exit edit mode.
         this.editingId = null;
         await this.refresh();
         return;
@@ -367,9 +338,7 @@ export class TodayView extends ItemView {
       void this.render();
     };
 
-    // Enter commits, Escape cancels. Tab/Shift+Tab switch fields naturally
-    // since both inputs are focusable siblings.
-    const onKey = (ev: KeyboardEvent) => {
+    titleInput.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") {
         ev.preventDefault();
         void commit();
@@ -377,21 +346,13 @@ export class TodayView extends ItemView {
         ev.preventDefault();
         cancel();
       }
-    };
-    titleInput.addEventListener("keydown", onKey);
-    projInput.addEventListener("keydown", onKey);
+    });
 
-    // Commit on blur — but only when neither input remains focused (i.e. user
-    // moved focus away from the row entirely, not just between fields).
-    const onBlur = (ev: FocusEvent) => {
+    titleInput.addEventListener("blur", (ev) => {
       const next = ev.relatedTarget as HTMLElement | null;
-      if (next && (next === titleInput || next === projInput || row.contains(next))) {
-        return;
-      }
+      if (next && row.contains(next)) return;
       void commit();
-    };
-    titleInput.addEventListener("blur", onBlur);
-    projInput.addEventListener("blur", onBlur);
+    });
   }
 
   // ── Phantom add (sticky) ────────────────────────────────────────────
@@ -410,41 +371,25 @@ export class TodayView extends ItemView {
     const titleInput = label.createEl("input", {
       type: "text",
       cls: "tick-feature-title-input",
-      attr: { placeholder: "New task..." },
+      attr: { placeholder: "New task... @project" },
     });
     titleInput.dataset.tickRole = "phantom-title";
-
-    const proj = label.createSpan({ cls: "tick-project" });
-    proj.createSpan({ text: "@", cls: "tick-project-prefix" });
-    const wrap = proj.createSpan({ cls: "tick-project-input-wrap" });
-    const projInput = wrap.createEl("input", {
-      type: "text",
-      cls: "tick-project-input",
-      attr: { placeholder: "project" },
-    });
-    const mirror = wrap.createSpan({ cls: "tick-project-input-mirror", attr: { "aria-hidden": "true" } });
-    const ghost = wrap.createSpan({ cls: "tick-project-input-ghost", attr: { "aria-hidden": "true" } });
-    projInput.dataset.tickRole = "phantom-project";
-    this.attachProjectGhost(projInput, mirror, ghost);
 
     let committing = false;
 
     const commit = async () => {
       if (committing) return;
-      const rawTitle = titleInput.value.trim();
-      if (!rawTitle) {
+      const raw = titleInput.value.trim();
+      if (!raw) {
         // Empty Enter / blur exits sticky add (TUI parity).
         this.phantomActive = false;
         await this.refresh();
         return;
       }
       committing = true;
-      const split = splitProjectFromTitle(rawTitle);
-      const title = split.title;
-      const project = (projInput.value.trim() || split.project) || null;
+      const split = splitProjectFromTitle(raw);
       try {
-        await this.store.addTask({ title, project });
-        // Sticky: re-open a fresh phantom for the next entry.
+        await this.store.addTask({ title: split.title, project: split.project });
         this.phantomActive = true;
         await this.refresh();
       } catch (e) {
@@ -458,7 +403,7 @@ export class TodayView extends ItemView {
       void this.render();
     };
 
-    const onKey = (ev: KeyboardEvent) => {
+    titleInput.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") {
         ev.preventDefault();
         void commit();
@@ -466,35 +411,29 @@ export class TodayView extends ItemView {
         ev.preventDefault();
         cancel();
       }
-    };
-    titleInput.addEventListener("keydown", onKey);
-    projInput.addEventListener("keydown", onKey);
+    });
 
-    // Commit on blur (when focus leaves the phantom entirely)
-    const onBlur = (ev: FocusEvent) => {
+    titleInput.addEventListener("blur", (ev) => {
       const next = ev.relatedTarget as HTMLElement | null;
       if (next && row.contains(next)) return;
       void commit();
-    };
-    titleInput.addEventListener("blur", onBlur);
-    projInput.addEventListener("blur", onBlur);
+    });
   }
 
   // After re-render the DOM is fresh; if we're in edit / phantom mode, restore
-  // focus to the right input so users can type continuously.
+  // focus so users can type continuously.
   private refocusActiveInput(): void {
     if (this.editingId !== null) {
       const row = this.contentEl.querySelector(
         `[data-task-id="${cssEscape(this.editingId)}"]`
       );
       if (!row) return;
-      const sel =
-        this.editFocusField === "project" ? "project-input" : "title-input";
-      const target = row.querySelector(`[data-tick-role="${sel}"]`) as HTMLInputElement | null;
+      const target = row.querySelector('[data-tick-role="title-input"]') as HTMLInputElement | null;
       if (target) {
         requestAnimationFrame(() => {
           target.focus();
-          target.select();
+          const end = target.value.length;
+          target.setSelectionRange(end, end);
         });
       }
     } else if (this.phantomActive) {
@@ -505,76 +444,6 @@ export class TodayView extends ItemView {
         requestAnimationFrame(() => target.focus());
       }
     }
-  }
-
-  // ── Project ghost autocomplete ──────────────────────────────────────
-
-  private attachProjectGhost(input: HTMLInputElement, mirror: HTMLElement, ghost: HTMLElement): void {
-    const projects = this.recentProjects();
-    let currentGhost = "";
-
-    const update = () => {
-      const v = input.value;
-      mirror.textContent = v;
-      currentGhost = this.computeGhost(v, projects);
-      ghost.textContent = currentGhost;
-      // Position ghost to start immediately after the typed text.
-      ghost.style.left = mirror.offsetWidth + "px";
-    };
-
-    input.addEventListener("input", update);
-    input.addEventListener("focus", update);
-    input.addEventListener("blur", () => {
-      ghost.textContent = "";
-      currentGhost = "";
-    });
-    input.addEventListener("keydown", (ev) => {
-      if (
-        ev.key === "ArrowRight" &&
-        input.selectionStart === input.value.length &&
-        input.selectionEnd === input.value.length &&
-        currentGhost
-      ) {
-        ev.preventDefault();
-        input.value += currentGhost;
-        update();
-      }
-    });
-    // Trigger an initial update so empty input shows lastProject as ghost.
-    requestAnimationFrame(update);
-  }
-
-  // Projects ordered by most-recent-use first, then frequency.
-  private recentProjects(): string[] {
-    const counts = new Map<string, { count: number; last: string }>();
-    for (const t of this.tasks) {
-      if (!t.project) continue;
-      const last = t.doneDate ?? t.created ?? "";
-      const cur = counts.get(t.project);
-      if (cur) {
-        cur.count++;
-        if (last > cur.last) cur.last = last;
-      } else {
-        counts.set(t.project, { count: 1, last });
-      }
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => {
-        const lastDiff = b[1].last.localeCompare(a[1].last);
-        if (lastDiff !== 0) return lastDiff;
-        return b[1].count - a[1].count;
-      })
-      .map(([name]) => name);
-  }
-
-  private computeGhost(value: string, projects: string[]): string {
-    const lower = value.toLowerCase();
-    for (const p of projects) {
-      if (p.toLowerCase().startsWith(lower) && p.length > value.length) {
-        return p.slice(value.length);
-      }
-    }
-    return "";
   }
 
   // ── Swipe-to-reveal-Delete ──────────────────────────────────────────

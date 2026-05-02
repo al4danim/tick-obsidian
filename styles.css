@@ -311,54 +311,10 @@
 .tick-project-prefix {
   opacity: 0.55;
 }
-.tick-project-name,
-.tick-project-input {
+.tick-project-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* In-place project edit input — completely transparent, inherits font */
-.tick-project-input {
-  appearance: none;
-  -webkit-appearance: none;
-  background: transparent;
-  border: 0;
-  outline: 0;
-  box-shadow: none;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  color: inherit;
-}
-.tick-project-input::placeholder {
-  color: var(--text-faint);
-}
-
-/* Ghost autocomplete overlay inside the project input */
-.tick-project-input-wrap {
-  position: relative;
-  display: inline-flex;
-  min-width: 30px;
-  flex: 1;
-}
-.tick-project-input-mirror {
-  position: absolute;
-  top: 0;
-  left: 0;
-  visibility: hidden;
-  white-space: pre;
-  font: inherit;
-  pointer-events: none;
-}
-.tick-project-input-ghost {
-  position: absolute;
-  top: 0;
-  left: 0;
-  pointer-events: none;
-  color: var(--text-faint);
-  font: inherit;
-  white-space: pre;
 }
 
 /* Hint texts */
