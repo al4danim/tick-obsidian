@@ -4,6 +4,8 @@ import type TickPlugin from "./main";
 export interface TickSettings {
   tasksPath: string;
   hideTopFolder: boolean;
+  groupByProject: boolean;
+  enableSwipe: boolean;
 }
 
 export const DEFAULT_SETTINGS: TickSettings = {
@@ -11,6 +13,8 @@ export const DEFAULT_SETTINGS: TickSettings = {
   // dot-prefixed folders. Visual hiding is handled by hideTopFolder below.
   tasksPath: "tick/tasks.md",
   hideTopFolder: true,
+  groupByProject: true,
+  enableSwipe: true,
 };
 
 export class TickSettingTab extends PluginSettingTab {
@@ -46,6 +50,26 @@ export class TickSettingTab extends PluginSettingTab {
       .addToggle((t) =>
         t.setValue(this.plugin.settings.hideTopFolder).onChange(async (v) => {
           this.plugin.settings.hideTopFolder = v;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Group pending tasks by project")
+      .setDesc("Pending list is grouped by @project (largest groups first; tasks with no project go last). Off = flat list.")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.groupByProject).onChange(async (v) => {
+          this.plugin.settings.groupByProject = v;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Swipe row to toggle (mobile)")
+      .setDesc("Swipe a task row left or right past the threshold to mark it done / undone. Has no effect on desktop.")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.enableSwipe).onChange(async (v) => {
+          this.plugin.settings.enableSwipe = v;
           await this.plugin.saveSettings();
         })
       );

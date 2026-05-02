@@ -1,7 +1,7 @@
 {
   "id": "tick",
   "name": "Tick",
-  "version": "0.3.0",
+  "version": "0.4.0-beta.1",
   "minAppVersion": "1.4.0",
   "description": "Quick to-do capture and toggle on a local markdown file.",
   "author": "al4danim",

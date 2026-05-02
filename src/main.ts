@@ -16,7 +16,11 @@ export default class TickPlugin extends Plugin {
 
     this.registerView(
       VIEW_TYPE_TODAY,
-      (leaf) => new TodayView(leaf, this.store)
+      (leaf) =>
+        new TodayView(leaf, this.store, () => ({
+          groupByProject: this.settings.groupByProject,
+          enableSwipe: this.settings.enableSwipe,
+        }))
     );
 
     // Auto-refresh open Today views when tasks.md is modified by anyone —
