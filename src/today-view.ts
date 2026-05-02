@@ -318,7 +318,11 @@ export class TodayView extends ItemView {
     });
     titleInput.dataset.tickRole = "title-input";
 
-    const projInput = label.createEl("input", {
+    // Wrap the project input inside a .tick-project span so the chip's
+    // background/radius/padding and "@" ::before pseudo all stay visible
+    // — only the inner text becomes editable.
+    const projChip = label.createSpan({ cls: "tick-project is-editing-chip" });
+    const projInput = projChip.createEl("input", {
       type: "text",
       cls: "tick-project-input",
       value: task.project ?? "",
@@ -418,7 +422,8 @@ export class TodayView extends ItemView {
     });
     titleInput.dataset.tickRole = "phantom-title";
 
-    const projInput = label.createEl("input", {
+    const projChip = label.createSpan({ cls: "tick-project is-editing-chip" });
+    const projInput = projChip.createEl("input", {
       type: "text",
       cls: "tick-project-input",
       attr: { placeholder: "project" },
