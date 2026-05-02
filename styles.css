@@ -1,5 +1,14 @@
 /* ── Tick Plugin Styles ─────────────────────────────────────────────── */
 
+/* Reclaim the default `.view-content` horizontal padding for this view so
+   rows reach the actual leaf edges. Without this Obsidian inserts ~12–16px
+   on each side, which on mobile reads as a noticeable inset before our
+   content begins. Scoped via `data-type` so only the tick-today view is
+   affected. */
+.workspace-leaf-content[data-type="tick-today"] .view-content {
+  padding: 0;
+}
+
 /* Today view container — zero horizontal padding so rows reach the screen
    edges; only vertical padding remains.
    Background is set explicitly to match rows (which use `--background-primary`
