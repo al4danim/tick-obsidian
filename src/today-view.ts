@@ -71,21 +71,38 @@ export class TodayView extends ItemView {
   // the class) and remove the class only if no input in our view is
   // focused anymore.
   private bindKeyboardScroll(input: HTMLInputElement): void {
+    let resizeObs: ResizeObserver | null = null;
+    const scroll = () => input.scrollIntoView({ block: "end" });
+
     input.addEventListener("focus", () => {
       this.contentEl.classList.add("tick-keyboard-open");
-      // `block: "end"` parks the input at the bottom of the container's
-      // visible viewport. CSS gives the input `scroll-margin-bottom: 50vh`,
-      // so the browser actually stops scrolling once the input is above
-      // the bottom 50vh — i.e. just above where the iOS keyboard sits.
-      // This shows as many context rows as possible above the input while
-      // keeping it visible. `block: "start"` (previous attempt) docked the
-      // input to the top and left a wasteful 60vh of empty padding below.
+
+      // Initial scroll after the iOS keyboard slide-in animation.
       setTimeout(() => {
-        if (document.activeElement !== input) return;
-        input.scrollIntoView({ block: "end" });
+        if (document.activeElement === input) scroll();
       }, 350);
+
+      // Re-scroll whenever the container's size changes. iOS WKWebView
+      // shrinks the WebView height after the keyboard finishes appearing,
+      // and the browser preserves scrollTop across the resize — so the
+      // input that was just-above-keyboard ends up below the new visible
+      // bottom (i.e. behind the keyboard). The user-reported symptom was
+      // "input flashes to the correct spot for a moment, then disappears
+      // behind the keyboard" — that "moment" is the gap between our
+      // setTimeout scroll and the keyboard finishing its animation.
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObs = new ResizeObserver(() => {
+          if (document.activeElement === input) scroll();
+        });
+        resizeObs.observe(this.contentEl);
+      }
     });
+
     input.addEventListener("blur", () => {
+      if (resizeObs) {
+        resizeObs.disconnect();
+        resizeObs = null;
+      }
       setTimeout(() => {
         if (!this.contentEl.contains(document.activeElement)) {
           this.contentEl.classList.remove("tick-keyboard-open");
