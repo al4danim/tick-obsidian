@@ -46,7 +46,7 @@ export class TodayView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "Tick Today";
+    return "Tick";
   }
 
   getIcon(): string {
@@ -217,7 +217,7 @@ export class TodayView extends ItemView {
   private renderHeader(container: HTMLElement, streak: number, doneCount: number, totalCount: number): void {
     const header = container.createDiv({ cls: "tick-today-header" });
 
-    header.createEl("span", { text: "Today", cls: "tick-today-title" });
+    header.createEl("span", { text: "Tick", cls: "tick-today-title" });
 
     const addBtn = header.createEl("button", {
       cls: "tick-add-fab clickable-icon",
@@ -596,6 +596,11 @@ export class TodayView extends ItemView {
     let startY = 0;
     let currentX = 0;
     let trackingHorizontal: boolean | null = null;
+    // Reveal width — single source of truth lives in CSS as `--tick-swipe-px`
+    // on `.tick-today-row` (88px desktop / 80px mobile). Read once per gesture
+    // so handheld orientation flips between gestures pick up the new value
+    // without polling on every touchmove.
+    let revealPx = 88;
 
     const onStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return;
@@ -603,6 +608,10 @@ export class TodayView extends ItemView {
       startY = e.touches[0].clientY;
       currentX = 0;
       trackingHorizontal = null;
+      const cssPx = parseFloat(
+        getComputedStyle(row).getPropertyValue("--tick-swipe-px"),
+      );
+      if (Number.isFinite(cssPx) && cssPx > 0) revealPx = cssPx;
     };
 
     const onMove = (e: TouchEvent) => {
@@ -625,8 +634,9 @@ export class TodayView extends ItemView {
       e.preventDefault();
       row.classList.add("is-swiping");
 
-      // Limit visual: don't track beyond reveal width (-88px).
-      currentX = Math.max(-88, Math.min(0, dx));
+      // Clamp to the same width CSS will snap to, so finger position and
+      // resting position never disagree (no last-pixel rebound on release).
+      currentX = Math.max(-revealPx, Math.min(0, dx));
       fg.style.transform = `translateX(${currentX}px)`;
     };
 

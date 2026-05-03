@@ -35,7 +35,7 @@ export default class TickPlugin extends Plugin {
       })
     );
 
-    this.addRibbonIcon("check-square", "Tick Today", () => {
+    this.addRibbonIcon("check-square", "Tick", () => {
       void this.openTodayView();
     });
 

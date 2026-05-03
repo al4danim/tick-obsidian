@@ -158,6 +158,12 @@
   -webkit-tap-highlight-color: transparent;
   /* Allow children with overflow to truncate */
   min-width: 0;
+  /* Single source of truth for swipe-reveal width: used by `.tick-swipe-action`
+     for its own width, by `.is-swipe-revealed .tick-row-foreground` for the
+     translateX target, and read by JS in `attachSwipeHandlers` to clamp the
+     gesture so finger drag, snap target, and Delete-button width stay in
+     lockstep. Mobile breakpoint overrides this single value. */
+  --tick-swipe-px: 88px;
 }
 
 /* Mouse-only hover. On touch devices iOS makes :hover sticky after tap, which
@@ -231,7 +237,7 @@
   right: 0;
   top: 0;
   bottom: 0;
-  width: 88px;
+  width: var(--tick-swipe-px);
   height: 100%;
   display: flex;
   align-items: center;
@@ -275,7 +281,7 @@
 }
 .tick-today-row.is-swipe-revealed .tick-row-foreground {
   /* row content slides left to reveal the delete button */
-  transform: translateX(-88px);
+  transform: translateX(calc(-1 * var(--tick-swipe-px)));
   transition: transform 200ms;
 }
 .tick-today-row.is-swiping .tick-row-foreground {
@@ -468,6 +474,9 @@
 @media (max-width: 500px) {
   .tick-today-row {
     padding: 6px 0;
+    /* Override the single swipe-px source. CSS rules above and JS read this
+       — no other mobile overrides for swipe needed. */
+    --tick-swipe-px: 80px;
   }
 
   .tick-feature-title,
@@ -479,12 +488,5 @@
   .tick-checkbox-visual {
     width: 20px;
     height: 20px;
-  }
-
-  .tick-swipe-action {
-    width: 80px;
-  }
-  .tick-today-row.is-swipe-revealed .tick-row-foreground {
-    transform: translateX(-80px);
   }
 }
