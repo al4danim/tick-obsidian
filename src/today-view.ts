@@ -28,10 +28,12 @@ export class TodayView extends ItemView {
   private swipeRevealedId: string | null = null;
 
   // Track focus on edit / phantom inputs so we can keep them above the
-  // iOS keyboard. visualViewport.resize was unreliable in Obsidian's
-  // WKWebView, so we drive everything off the input's focus / blur events
-  // and a CSS class that inflates the container's bottom padding (giving
-  // scroll room past the natural last-row position).
+  // iOS keyboard. The hard part is that Obsidian's WKWebView does NOT
+  // shrink the layout viewport when the keyboard opens — only the visual
+  // viewport shrinks. So `scrollIntoView({ block: "end" })` aligns the
+  // input with the scrollport's visible bottom, which sits BEHIND the
+  // keyboard. We have to drive scrollTop ourselves using
+  // `window.visualViewport.height`.
 
   constructor(leaf: WorkspaceLeaf, store: Store, getViewSettings: () => ViewSettings) {
     super(leaf);
@@ -59,46 +61,75 @@ export class TodayView extends ItemView {
     this.contentEl.empty();
   }
 
-  // Bind keyboard-avoidance handlers to a focusable input. On focus, we
-  //   1. add `.tick-keyboard-open` to the container — the CSS bumps
-  //      `padding-bottom` to 50vh so there is enough scrollable space to
-  //      move the input above the keyboard even when it is the last row;
-  //   2. wait ~350ms for the iOS keyboard slide-in animation, then call
-  //      `scrollIntoView({ block: "center" })` to position the input
-  //      vertically centered in the container's CSS viewport — which is
-  //      well above the keyboard.
-  // On blur, we wait a tick (so a quick refocus on another input keeps
-  // the class) and remove the class only if no input in our view is
-  // focused anymore.
+  // Bind keyboard-avoidance handlers to a focusable input.
+  //
+  // On focus we add `.tick-keyboard-open` (CSS bumps `padding-bottom` to
+  // 60vh so the container has enough scroll room past its natural last
+  // row to push any input above the keyboard) and then call `adjust()`
+  // from several signals — see comment at the trigger sites for why none
+  // of them is sufficient on its own.
+  //
+  // `adjust()` scrolls the container by the gap between the input's
+  // bottom and the visual viewport's bottom — i.e. it pushes the input
+  // up just enough to clear the keyboard, with 16px breathing room. It's
+  // idempotent: once the input is in position the next call computes
+  // overflow=0 and no-ops, so it's safe to fire from multiple triggers.
+  //
+  // Why we manage scrollTop ourselves instead of `scrollIntoView({ block:
+  // "end" })`: in Obsidian's iOS WKWebView the layout viewport doesn't
+  // shrink when the keyboard appears, so the scrollport's "end" sits
+  // behind the keyboard. `scrollIntoView({ block: "end" })` will dutifully
+  // park the input there — which is what we used to do, and which is why
+  // beta.17–23 all failed in slightly different ways. visualViewport is
+  // the only signal that actually reflects what the user can see.
   private bindKeyboardScroll(input: HTMLInputElement): void {
+    const adjust = () => {
+      if (document.activeElement !== input) return;
+      const vv = window.visualViewport;
+      const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+      const inputRect = input.getBoundingClientRect();
+      const overflow = inputRect.bottom + 16 - visibleBottom;
+      if (overflow > 0) {
+        this.contentEl.scrollTop += overflow;
+      }
+    };
+
+    let vvHandler: (() => void) | null = null;
     let resizeObs: ResizeObserver | null = null;
-    const scroll = () => input.scrollIntoView({ block: "end" });
 
     input.addEventListener("focus", () => {
       this.contentEl.classList.add("tick-keyboard-open");
 
-      // Initial scroll after the iOS keyboard slide-in animation.
-      setTimeout(() => {
-        if (document.activeElement === input) scroll();
-      }, 350);
+      // Multiple triggers because no single signal is reliable across all
+      // WebView versions / Obsidian builds:
+      //   - rAF: layout settled, but keyboard not up yet — usually a no-op
+      //     but cheap insurance for the rare case iOS already auto-scrolled.
+      //   - setTimeout(400): iOS keyboard animation is ~250–350ms, so by
+      //     400ms vv.height should reflect the keyboard. This is our
+      //     guaranteed-to-fire baseline.
+      //   - visualViewport.resize: best signal — fires on keyboard up,
+      //     down, rotation, split-screen, accessory-bar toggling.
+      //   - ResizeObserver on the container: belt-and-suspenders fallback
+      //     for the (rare) case the layout viewport itself shrinks.
+      requestAnimationFrame(adjust);
+      setTimeout(adjust, 400);
 
-      // Re-scroll whenever the container's size changes. iOS WKWebView
-      // shrinks the WebView height after the keyboard finishes appearing,
-      // and the browser preserves scrollTop across the resize — so the
-      // input that was just-above-keyboard ends up below the new visible
-      // bottom (i.e. behind the keyboard). The user-reported symptom was
-      // "input flashes to the correct spot for a moment, then disappears
-      // behind the keyboard" — that "moment" is the gap between our
-      // setTimeout scroll and the keyboard finishing its animation.
+      if (window.visualViewport) {
+        vvHandler = adjust;
+        window.visualViewport.addEventListener("resize", vvHandler);
+      }
+
       if (typeof ResizeObserver !== "undefined") {
-        resizeObs = new ResizeObserver(() => {
-          if (document.activeElement === input) scroll();
-        });
+        resizeObs = new ResizeObserver(adjust);
         resizeObs.observe(this.contentEl);
       }
     });
 
     input.addEventListener("blur", () => {
+      if (vvHandler && window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", vvHandler);
+        vvHandler = null;
+      }
       if (resizeObs) {
         resizeObs.disconnect();
         resizeObs = null;
