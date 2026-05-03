@@ -52,7 +52,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
   padding: 0 4px;
 }
 
@@ -175,7 +175,7 @@
    text reads in normal `--text-normal` rather than dimmed-to-50%. The
    line-through styling targets `.tick-feature-title` (a span), which
    doesn't render in edit mode anyway, so no separate reset needed there. */
-.tick-today-row.done.is-editing {
+.tick-today-row.done.is-editing .tick-row-foreground {
   opacity: 1;
 }
 
@@ -190,7 +190,13 @@
   box-shadow: none;
 }
 
-.tick-today-row.done {
+/* Dim the done row's content (checkbox + title + project) but NOT the
+   swipe-revealed Delete button, which is a sibling of `.tick-row-foreground`
+   inside the row. CSS opacity composites multiplicatively from parent to
+   child, so dimming the row would also dim Delete — moving the rule to
+   the foreground wrapper keeps Delete at full red intensity even on done
+   rows. */
+.tick-today-row.done .tick-row-foreground {
   opacity: 0.5;
 }
 
