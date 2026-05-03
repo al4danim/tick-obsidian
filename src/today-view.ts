@@ -27,6 +27,12 @@ export class TodayView extends ItemView {
   // Which row currently has its Delete button revealed (only one at a time).
   private swipeRevealedId: string | null = null;
 
+  // Bound handler for `visualViewport.resize` so we can detach it on close.
+  // iOS doesn't auto-scroll our `overflow-y: auto` container when the
+  // keyboard opens, so an edit row near the bottom gets covered. We listen
+  // for the viewport shrink and scroll the focused input into view.
+  private keyboardScrollHandler: (() => void) | null = null;
+
   constructor(leaf: WorkspaceLeaf, store: Store, getViewSettings: () => ViewSettings) {
     super(leaf);
     this.store = store;
@@ -47,10 +53,59 @@ export class TodayView extends ItemView {
 
   async onOpen(): Promise<void> {
     await this.render();
+    this.attachKeyboardScroll();
   }
 
   async onClose(): Promise<void> {
+    this.detachKeyboardScroll();
     this.contentEl.empty();
+  }
+
+  private attachKeyboardScroll(): void {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    this.keyboardScrollHandler = () => this.scrollEditedInputIntoView();
+    vv.addEventListener("resize", this.keyboardScrollHandler);
+  }
+
+  private detachKeyboardScroll(): void {
+    const vv = window.visualViewport;
+    if (vv && this.keyboardScrollHandler) {
+      vv.removeEventListener("resize", this.keyboardScrollHandler);
+    }
+    this.keyboardScrollHandler = null;
+  }
+
+  // If the focused edit / phantom input sits below the visualViewport's
+  // visible area (i.e. the iOS keyboard is covering it), scroll the
+  // container so the input lands above the keyboard with a small margin.
+  // No-op when nothing is being edited or when the input is already visible.
+  private scrollEditedInputIntoView(): void {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    let target: HTMLInputElement | null = null;
+    if (this.editingId !== null) {
+      target = this.contentEl.querySelector(
+        `[data-task-id="${cssEscape(this.editingId)}"] [data-tick-role="title-input"]`,
+      ) as HTMLInputElement | null;
+    } else if (this.phantomActive) {
+      target = this.contentEl.querySelector(
+        '[data-tick-role="phantom-title"]',
+      ) as HTMLInputElement | null;
+    }
+    if (!target) return;
+
+    const rect = target.getBoundingClientRect();
+    // visualViewport.offsetTop is non-zero on iOS when the page has been
+    // scrolled by Safari's own keyboard-avoidance (rare in our custom
+    // container, but include it to be safe).
+    const safeBottom = vv.offsetTop + vv.height - 12;
+    if (rect.bottom > safeBottom) {
+      this.contentEl.scrollBy({
+        top: rect.bottom - safeBottom,
+        behavior: "smooth",
+      });
+    }
   }
 
   async refresh(): Promise<void> {
@@ -484,6 +539,12 @@ export class TodayView extends ItemView {
           const end = target.value.length;
           target.setSelectionRange(end, end);
         });
+        // The visualViewport `resize` listener fires once the keyboard is
+        // shown, but for the *first* edit entry there's no transition (the
+        // keyboard might already be up from a prior input). Schedule a
+        // delayed scroll so the row is visible above the keyboard either
+        // way. ~350ms is enough for the iOS keyboard animation.
+        setTimeout(() => this.scrollEditedInputIntoView(), 350);
       }
     } else if (this.phantomActive) {
       const target = this.contentEl.querySelector(
@@ -491,6 +552,7 @@ export class TodayView extends ItemView {
       ) as HTMLInputElement | null;
       if (target && document.activeElement !== target) {
         requestAnimationFrame(() => target.focus());
+        setTimeout(() => this.scrollEditedInputIntoView(), 350);
       }
     }
   }
