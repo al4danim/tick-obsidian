@@ -1,5 +1,15 @@
 /* ── Tick Plugin Styles ─────────────────────────────────────────────── */
 
+/* Undo link inside the post-delete Notice toast. Lives at the top level
+   (NOT nested under `[data-type="tick-today"]`) because Obsidian renders
+   Notice toasts in `document.body`, outside any leaf. */
+.tick-undo-link {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-on-accent, currentColor);
+  text-decoration: underline;
+}
+
 /* Reclaim the default `.view-content` horizontal padding for this view so
    rows reach the actual leaf edges. Without this Obsidian inserts ~12–16px
    on each side, which on mobile reads as a noticeable inset before our
@@ -25,26 +35,17 @@
 }
 
 /* When an edit / phantom-add input is focused, JS adds this class so the
-   container has enough scrollable room below its natural last row to push
-   the focused input above the iOS keyboard via `scrollIntoView({ block:
-   "start" })`. 60vh is more than any keyboard so a single rule covers
-   phone, tablet, landscape, and accessory bar. Class is removed on blur.
-   `!important` because the base `.tick-today-container { padding: 6px 0
-   20px }` shorthand keeps re-asserting padding-bottom in Obsidian's
-   normalised cascade — without it the override loses on some platforms. */
+   container gains enough scrollable room past its natural last row for
+   `bindKeyboardScroll` to push any input above the iOS keyboard via a
+   manual `this.contentEl.scrollTop += overflow` (driven by
+   `visualViewport.height` — see today-view.ts). 60vh is more than any
+   keyboard so a single rule covers phone, tablet, landscape, and
+   accessory bar. Class is removed on blur. `!important` because the
+   base `.tick-today-container { padding: 6px 0 20px }` shorthand keeps
+   re-asserting padding-bottom in Obsidian's normalised cascade — without
+   it the override loses on some platforms. */
 .tick-today-container.tick-keyboard-open {
   padding-bottom: 60vh !important;
-}
-
-/* Park the focused input just above the iOS keyboard. iOS WKWebView
-   shrinks the WebView's height when the keyboard opens, so the container's
-   `clientHeight` already excludes the keyboard area — `block: "end"`
-   alone docks the input to the (now smaller) viewport's bottom, which is
-   right above the keyboard. We only need a few pixels of breathing room.
-   The 80px top margin still applies when editing a top-of-list row. */
-.tick-feature-title-input {
-  scroll-margin-top: 80px;
-  scroll-margin-bottom: 16px;
 }
 
 /* Header bar */
@@ -52,7 +53,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
   padding: 0 4px;
 }
 
@@ -62,8 +63,7 @@
   letter-spacing: -0.01em;
 }
 
-.tick-add-fab,
-.tick-refresh-btn {
+.tick-add-fab {
   background: none;
   border: none;
   cursor: pointer;
@@ -75,8 +75,7 @@
   display: flex;
   align-items: center;
 }
-.tick-add-fab:hover,
-.tick-refresh-btn:hover {
+.tick-add-fab:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
@@ -179,15 +178,22 @@
   opacity: 1;
 }
 
-/* Belt-and-suspenders: even if some Obsidian/UA stylesheet paints the row
-   while an input inside is focused, force it transparent in edit mode. */
+/* Editing state — intentionally NO background or border change. The only
+   visual cue is the text caret in the input, so the user perceives "I'm
+   editing the existing text" rather than "a card just appeared".
+   Belt-and-suspenders: defend against any Obsidian/UA stylesheet that
+   paints background/outline/box-shadow on the row tree while an input
+   inside is focused. `!important` on outline/box-shadow/border because
+   Obsidian's `:focus`/`:focus-within` rules win normal cascade. */
 .tick-today-row.is-editing,
 .tick-today-row.is-editing:hover,
 .tick-today-row.is-editing .tick-row-foreground,
 .tick-today-row.is-editing .tick-row-label {
   background: transparent;
   border-radius: 0;
-  box-shadow: none;
+  outline: 0 !important;
+  box-shadow: none !important;
+  border: 0 !important;
 }
 
 /* Dim the done row's content (checkbox + title + project) but NOT the
@@ -203,10 +209,6 @@
 .tick-today-row.done .tick-feature-title {
   text-decoration: line-through;
 }
-
-/* Editing state — intentionally NO background or border change. The only
-   visual cue is the text caret in the input, so the user perceives "I'm
-   editing the existing text" rather than "a card just appeared". */
 
 /* Swipe states */
 .tick-today-row.is-swiping {
@@ -407,16 +409,6 @@
   min-height: 0;
 }
 
-/* Same defense at the row-wrapper level — kill any focus-within outlines or
-   shadows Obsidian might paint on the parent when the input has focus. */
-.tick-today-row.is-editing,
-.tick-today-row.is-editing .tick-row-foreground,
-.tick-today-row.is-editing .tick-row-label {
-  outline: 0 !important;
-  box-shadow: none !important;
-  border: 0 !important;
-}
-
 /* Dim "-Nd" marker on done rows from earlier days. Sits between the title
    and the @project (or alone, if no project). Mirrors tick-tui's
    right-side formatting like "-1d @work". */
@@ -450,7 +442,6 @@
 
 /* Hint texts */
 .tick-empty-hint,
-.tick-loading,
 .tick-error-hint {
   color: var(--text-muted);
   font-size: 0.9em;

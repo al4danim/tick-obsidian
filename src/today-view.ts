@@ -487,7 +487,7 @@ export class TodayView extends ItemView {
   // ── Phantom add (sticky) ────────────────────────────────────────────
 
   private renderPhantomAdd(body: HTMLElement): void {
-    const row = body.createDiv({ cls: "tick-today-row is-phantom is-editing" });
+    const row = body.createDiv({ cls: "tick-today-row is-editing" });
     const fg = row.createDiv({ cls: "tick-row-foreground" });
 
     // Disabled checkbox just for visual alignment with sibling rows.
@@ -706,10 +706,7 @@ export class TodayView extends ItemView {
     frag.appendChild(span);
     const link = document.createElement("a");
     link.textContent = "Undo";
-    link.style.cursor = "pointer";
-    link.style.fontWeight = "600";
-    link.style.color = "var(--text-on-accent, currentColor)";
-    link.style.textDecoration = "underline";
+    link.className = "tick-undo-link";
     frag.appendChild(link);
 
     const notice = new Notice(frag, 5000);
