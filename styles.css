@@ -48,19 +48,27 @@
   padding-bottom: 60vh !important;
 }
 
-/* Header bar */
+/* Header bar. Asymmetric horizontal padding: 4px on the left keeps the
+   leftmost child (the title's left edge after its own padding) flush with
+   the checkbox column below; 8px on the right gives the streak chip /
+   "N/M done" counter breathing room from the leaf edge. */
 .tick-today-header {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 16px;
-  padding: 0 4px;
+  padding: 0 8px 0 4px;
 }
 
 .tick-today-title {
   font-weight: 700;
   font-size: 1.25em;
   letter-spacing: -0.01em;
+  /* Slight inset so "Tick" reads as a section heading rather than glued
+     to the leaf edge. Body rows (checkbox column) stay at the header's
+     own 4px left padding, so they sit just left of the title — standard
+     iOS section-title-vs-list-content offset. */
+  padding-left: 4px;
 }
 
 .tick-add-fab {
@@ -105,11 +113,13 @@
   flex-shrink: 0;
 }
 
-/* Body wraps phantom + pending + divider + done. Match the header's
-   4px horizontal padding so checkbox circles, divider, and right-aligned
-   `@project` labels all line up with "Today" / "17/20 done" in the header. */
+/* Body wraps phantom + pending + divider + done. Mirrors the header's
+   asymmetric padding (4px left / 8px right) so checkbox circles align
+   under the header's left edge while `@project` labels and the divider's
+   right-side line get the same 8px breathing room as the streak chip
+   and counter above. */
 .tick-today-body {
-  padding: 0 4px;
+  padding: 0 8px 0 4px;
 }
 
 /* Section divider with text label */
