@@ -345,6 +345,11 @@
   gap: 6px;
   flex: 1;
   min-width: 0;
+  /* Unify line-height across title / day-marker / @project so their text
+     baselines align. Without this, only `.tick-feature-title` set 1.4 and
+     the siblings inherited Obsidian's default (~1.5), drifting baselines
+     by ~1px under flex `align-items: center`. */
+  line-height: 1.4;
 }
 
 .tick-feature-title {
@@ -465,7 +470,7 @@
    row click area, not from padding. */
 @media (max-width: 500px) {
   .tick-today-row {
-    padding: 5px 0;
+    padding: 6px 0;
   }
 
   .tick-feature-title,
