@@ -27,11 +27,11 @@ export class TodayView extends ItemView {
   // Which row currently has its Delete button revealed (only one at a time).
   private swipeRevealedId: string | null = null;
 
-  // Bound handler for `visualViewport.resize` so we can detach it on close.
-  // iOS doesn't auto-scroll our `overflow-y: auto` container when the
-  // keyboard opens, so an edit row near the bottom gets covered. We listen
-  // for the viewport shrink and scroll the focused input into view.
-  private keyboardScrollHandler: (() => void) | null = null;
+  // Track focus on edit / phantom inputs so we can keep them above the
+  // iOS keyboard. visualViewport.resize was unreliable in Obsidian's
+  // WKWebView, so we drive everything off the input's focus / blur events
+  // and a CSS class that inflates the container's bottom padding (giving
+  // scroll room past the natural last-row position).
 
   constructor(leaf: WorkspaceLeaf, store: Store, getViewSettings: () => ViewSettings) {
     super(leaf);
@@ -53,82 +53,38 @@ export class TodayView extends ItemView {
 
   async onOpen(): Promise<void> {
     await this.render();
-    this.attachKeyboardScroll();
   }
 
   async onClose(): Promise<void> {
-    this.detachKeyboardScroll();
     this.contentEl.empty();
   }
 
-  private attachKeyboardScroll(): void {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    this.keyboardScrollHandler = () => this.scrollEditedInputIntoView();
-    vv.addEventListener("resize", this.keyboardScrollHandler);
-  }
-
-  private detachKeyboardScroll(): void {
-    const vv = window.visualViewport;
-    if (vv && this.keyboardScrollHandler) {
-      vv.removeEventListener("resize", this.keyboardScrollHandler);
-    }
-    this.keyboardScrollHandler = null;
-  }
-
-  // Keep the focused edit / phantom input visible above the iOS keyboard.
-  //
-  // Two-step fix because plain `scrollBy` can't scroll past the container's
-  // natural content height — when the edited row is the last one, the
-  // container is already at scroll-bottom and the input stays under the
-  // keyboard:
-  //
-  //   1. Inflate the container's `padding-bottom` by the keyboard height.
-  //      This adds empty scrollable space below the last row so we *can*
-  //      scroll the input upward past where it would naturally sit.
-  //   2. If the input's bounding rect is below the visualViewport's safe
-  //      bottom, scroll by the overlap.
-  //
-  // When the keyboard hides (resize fires with keyboardHeight === 0), the
-  // padding is cleared so the layout snaps back.
-  private scrollEditedInputIntoView(): void {
-    const vv = window.visualViewport;
-    if (!vv) return;
-
-    // iOS: window.innerHeight stays constant when the keyboard opens;
-    // visualViewport.height shrinks. Difference ≈ keyboard height.
-    const keyboardHeight = Math.max(
-      0,
-      window.innerHeight - vv.height - vv.offsetTop,
-    );
-
-    // Inflate or clear scroll room. 32px extra so the input sits comfortably
-    // above the keyboard, not glued to its top edge.
-    this.contentEl.style.paddingBottom =
-      keyboardHeight > 0 ? `${keyboardHeight + 32}px` : "";
-
-    if (keyboardHeight === 0) return;
-
-    let target: HTMLInputElement | null = null;
-    if (this.editingId !== null) {
-      target = this.contentEl.querySelector(
-        `[data-task-id="${cssEscape(this.editingId)}"] [data-tick-role="title-input"]`,
-      ) as HTMLInputElement | null;
-    } else if (this.phantomActive) {
-      target = this.contentEl.querySelector(
-        '[data-tick-role="phantom-title"]',
-      ) as HTMLInputElement | null;
-    }
-    if (!target) return;
-
-    const rect = target.getBoundingClientRect();
-    const safeBottom = vv.offsetTop + vv.height - 16;
-    if (rect.bottom > safeBottom) {
-      this.contentEl.scrollBy({
-        top: rect.bottom - safeBottom,
-        behavior: "smooth",
-      });
-    }
+  // Bind keyboard-avoidance handlers to a focusable input. On focus, we
+  //   1. add `.tick-keyboard-open` to the container — the CSS bumps
+  //      `padding-bottom` to 50vh so there is enough scrollable space to
+  //      move the input above the keyboard even when it is the last row;
+  //   2. wait ~350ms for the iOS keyboard slide-in animation, then call
+  //      `scrollIntoView({ block: "center" })` to position the input
+  //      vertically centered in the container's CSS viewport — which is
+  //      well above the keyboard.
+  // On blur, we wait a tick (so a quick refocus on another input keeps
+  // the class) and remove the class only if no input in our view is
+  // focused anymore.
+  private bindKeyboardScroll(input: HTMLInputElement): void {
+    input.addEventListener("focus", () => {
+      this.contentEl.classList.add("tick-keyboard-open");
+      setTimeout(() => {
+        if (document.activeElement !== input) return;
+        input.scrollIntoView({ block: "center" });
+      }, 350);
+    });
+    input.addEventListener("blur", () => {
+      setTimeout(() => {
+        if (!this.contentEl.contains(document.activeElement)) {
+          this.contentEl.classList.remove("tick-keyboard-open");
+        }
+      }, 100);
+    });
   }
 
   async refresh(): Promise<void> {
@@ -416,6 +372,7 @@ export class TodayView extends ItemView {
       value: initial,
     });
     titleInput.dataset.tickRole = "title-input";
+    this.bindKeyboardScroll(titleInput);
 
     let committed = false;
     let cancelled = false;
@@ -497,6 +454,7 @@ export class TodayView extends ItemView {
       attr: { placeholder: "New task... @project" },
     });
     titleInput.dataset.tickRole = "phantom-title";
+    this.bindKeyboardScroll(titleInput);
 
     let committing = false;
 
@@ -562,12 +520,6 @@ export class TodayView extends ItemView {
           const end = target.value.length;
           target.setSelectionRange(end, end);
         });
-        // The visualViewport `resize` listener fires once the keyboard is
-        // shown, but for the *first* edit entry there's no transition (the
-        // keyboard might already be up from a prior input). Schedule a
-        // delayed scroll so the row is visible above the keyboard either
-        // way. ~350ms is enough for the iOS keyboard animation.
-        setTimeout(() => this.scrollEditedInputIntoView(), 350);
       }
     } else if (this.phantomActive) {
       const target = this.contentEl.querySelector(
@@ -575,7 +527,6 @@ export class TodayView extends ItemView {
       ) as HTMLInputElement | null;
       if (target && document.activeElement !== target) {
         requestAnimationFrame(() => target.focus());
-        setTimeout(() => this.scrollEditedInputIntoView(), 350);
       }
     }
   }

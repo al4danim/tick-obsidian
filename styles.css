@@ -24,6 +24,15 @@
   background: var(--background-primary);
 }
 
+/* When an edit / phantom-add input is focused, JS adds this class so the
+   container has enough scrollable room below its natural last row to push
+   the focused input above the iOS keyboard via `scrollIntoView({ block:
+   "center" })`. 50vh is more than any keyboard so a single rule covers
+   phone, tablet, landscape, and accessory bar. Class is removed on blur. */
+.tick-today-container.tick-keyboard-open {
+  padding-bottom: 50vh;
+}
+
 /* Header bar */
 .tick-today-header {
   display: flex;
