@@ -27,10 +27,20 @@
 /* When an edit / phantom-add input is focused, JS adds this class so the
    container has enough scrollable room below its natural last row to push
    the focused input above the iOS keyboard via `scrollIntoView({ block:
-   "center" })`. 50vh is more than any keyboard so a single rule covers
-   phone, tablet, landscape, and accessory bar. Class is removed on blur. */
+   "start" })`. 60vh is more than any keyboard so a single rule covers
+   phone, tablet, landscape, and accessory bar. Class is removed on blur.
+   `!important` because the base `.tick-today-container { padding: 6px 0
+   20px }` shorthand keeps re-asserting padding-bottom in Obsidian's
+   normalised cascade — without it the override loses on some platforms. */
 .tick-today-container.tick-keyboard-open {
-  padding-bottom: 50vh;
+  padding-bottom: 60vh !important;
+}
+
+/* Leave a comfortable 80px gap above the input when scrollIntoView() docks
+   it to the top of the container — otherwise it sits flush under the
+   header / status bar. */
+.tick-feature-title-input {
+  scroll-margin-top: 80px;
 }
 
 /* Header bar */

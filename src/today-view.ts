@@ -73,9 +73,16 @@ export class TodayView extends ItemView {
   private bindKeyboardScroll(input: HTMLInputElement): void {
     input.addEventListener("focus", () => {
       this.contentEl.classList.add("tick-keyboard-open");
+      // `block: "start"` is more reliable on iOS WKWebView than "center" —
+      // the latter sometimes computed the centre against a viewport that
+      // didn't account for the keyboard, leaving the input still partially
+      // covered. `start` always docks the input to the top of the
+      // container's visible area (offset by `scroll-margin-top` in CSS),
+      // which combined with the 60vh padding-bottom guarantees it lands
+      // well above the keyboard.
       setTimeout(() => {
         if (document.activeElement !== input) return;
-        input.scrollIntoView({ block: "center" });
+        input.scrollIntoView({ block: "start" });
       }, 350);
     });
     input.addEventListener("blur", () => {
