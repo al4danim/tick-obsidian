@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
-import { Store, Task, todayString, yesterdayString, splitProjectFromTitle, computeStreak, groupPendingByProject } from "./store";
+import { Store, Task, todayString, yesterdayString, splitProjectFromTitle, computeStreak, groupPendingByProject, STREAK_WINDOW_DAYS } from "./store";
 import { attachKeyboardScroll } from "./keyboard-scroll";
 import { SwipeController } from "./swipe-controller";
 
@@ -198,7 +198,9 @@ export class TickView extends ItemView {
     const streakChip = header.createSpan({ cls: "tick-streak-chip" });
     if (streak === 0) streakChip.addClass("is-cold");
     streakChip.createSpan({ text: "🔥" });
-    streakChip.createSpan({ text: streak >= 30 ? "30+" : String(streak) });
+    streakChip.createSpan({
+      text: streak >= STREAK_WINDOW_DAYS ? `${STREAK_WINDOW_DAYS}+` : String(streak),
+    });
 
     header.createEl("span", {
       cls: "tick-today-summary",

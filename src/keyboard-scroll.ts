@@ -30,13 +30,22 @@
 // the keyboard. This is the guaranteed-to-fire baseline for our scroll adjust.
 const KEYBOARD_SETTLE_FALLBACK_MS = 400;
 
+// Pixels of visible space we want above the input top once it's pushed up,
+// so the caret doesn't sit flush against the keyboard's top edge.
+const KEYBOARD_BREATHING_ROOM_PX = 16;
+
+// On blur we wait this long before stripping `.tick-keyboard-open`, so a
+// focus jump from one input to another (Tab / tap-edit-next-row) doesn't
+// briefly collapse the container's scroll room.
+const BLUR_DEFER_MS = 100;
+
 export function attachKeyboardScroll(container: HTMLElement, input: HTMLInputElement): void {
   const adjust = () => {
     if (document.activeElement !== input) return;
     const vv = window.visualViewport;
     const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
     const inputRect = input.getBoundingClientRect();
-    const overflow = inputRect.bottom + 16 - visibleBottom;
+    const overflow = inputRect.bottom + KEYBOARD_BREATHING_ROOM_PX - visibleBottom;
     if (overflow > 0) {
       container.scrollTop += overflow;
     }
@@ -86,6 +95,6 @@ export function attachKeyboardScroll(container: HTMLElement, input: HTMLInputEle
       if (!container.contains(document.activeElement)) {
         container.classList.remove("tick-keyboard-open");
       }
-    }, 100);
+    }, BLUR_DEFER_MS);
   });
 }

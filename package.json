@@ -1,6 +1,6 @@
 {
   "name": "tick-obsidian",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Quick to-do capture and toggle on a local markdown file.",
   "main": "main.js",
   "scripts": {

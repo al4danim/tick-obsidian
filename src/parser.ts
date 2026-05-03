@@ -109,10 +109,14 @@ function formatDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-// Walks back from today through the last 30 days counting consecutive days
-// with at least one done task. Stops at the first zero-completion day.
-// Capped at 30; callers should display "30+" at the cap since we can't
-// distinguish 30 from 31 with only 30 days of input.
+// How far back computeStreak walks. Anything past this is left to tick-tui's
+// stats panel, which has full archive history. Callers should display "N+"
+// when streak === STREAK_WINDOW_DAYS since we can't tell N from N+1 here.
+export const STREAK_WINDOW_DAYS = 30;
+
+// Walks back from today through the last STREAK_WINDOW_DAYS counting
+// consecutive days with at least one done task. Stops at the first
+// zero-completion day.
 //
 // Limit: tasks.md only — we don't read archive.md (the Go-side tick-tui CLI
 // owns the 7-day rolling sweep). On a vault where the user runs tick-tui
@@ -128,7 +132,7 @@ export function computeStreak(tasks: Task[]): number {
   }
   let streak = 0;
   const cursor = new Date();
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < STREAK_WINDOW_DAYS; i++) {
     const y = cursor.getFullYear();
     const m = String(cursor.getMonth() + 1).padStart(2, "0");
     const day = String(cursor.getDate()).padStart(2, "0");

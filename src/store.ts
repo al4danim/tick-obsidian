@@ -1,8 +1,8 @@
 import { App, normalizePath, TFile } from "obsidian";
-import { Task, parseLine, marshalLine, todayString, yesterdayString, splitProjectFromTitle, computeStreak, groupPendingByProject } from "./parser";
+import { Task, parseLine, marshalLine, todayString, yesterdayString, splitProjectFromTitle, computeStreak, groupPendingByProject, STREAK_WINDOW_DAYS } from "./parser";
 
 // Re-export so existing imports from "./store" keep working.
-export { parseLine, marshalLine, todayString, yesterdayString, splitProjectFromTitle, computeStreak, groupPendingByProject };
+export { parseLine, marshalLine, todayString, yesterdayString, splitProjectFromTitle, computeStreak, groupPendingByProject, STREAK_WINDOW_DAYS };
 export type { Task };
 
 // 8 hex chars. Random IDs avoid collisions when Mac and mobile both add tasks

@@ -32,6 +32,16 @@
   height: 100%;
   overflow-y: auto;
   background: var(--background-primary);
+  /* Suppress the iOS half-transparent grey flash on every clickable descendant
+     (rows, checkboxes, fab, swipe Delete, project, day-marker). Inherits, so
+     one declaration here covers them all. */
+  -webkit-tap-highlight-color: transparent;
+
+  /* Three-tier type ladder. Title is used twice (header + fab) so it stays
+     inline; body and meta are tokens because they're used on many elements
+     and body has a mobile override below. */
+  --tick-fs-body: 0.95em;
+  --tick-fs-meta: 0.85em;
 }
 
 /* When an edit / phantom-add input is focused, JS adds this class so the
@@ -40,12 +50,9 @@
    manual `container.scrollTop += overflow` (driven by
    `visualViewport.height` — see keyboard-scroll.ts). 60vh is more than any
    keyboard so a single rule covers phone, tablet, landscape, and
-   accessory bar. Class is removed on blur. `!important` because the
-   base `.tick-today-container { padding: 6px 0 20px }` shorthand keeps
-   re-asserting padding-bottom in Obsidian's normalised cascade — without
-   it the override loses on some platforms. */
+   accessory bar. Class is removed on blur. */
 .tick-today-container.tick-keyboard-open {
-  padding-bottom: 60vh !important;
+  padding-bottom: 60vh;
 }
 
 /* Header bar. Asymmetric horizontal padding: 4px on the left keeps the
@@ -78,14 +85,18 @@
   padding: 4px 6px;
   border-radius: var(--radius-s);
   color: var(--text-muted);
-  font-size: 1.2em;
+  font-size: 1.25em;
   font-weight: 600;
   display: flex;
   align-items: center;
 }
-.tick-add-fab:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
+/* Same iOS sticky-hover guard as `.tick-today-row:hover` below — without it
+   the fab keeps its grey background on touch devices after a tap. */
+@media (hover: hover) and (pointer: fine) {
+  .tick-add-fab:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
 }
 
 /* Streak chip */
@@ -98,17 +109,17 @@
   border-radius: 999px;
   background: var(--background-modifier-hover);
   color: var(--text-normal);
-  font-size: 0.85em;
+  font-size: var(--tick-fs-meta);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
 .tick-streak-chip.is-cold {
-  opacity: 0.45;
+  opacity: 0.5;
 }
 
 .tick-today-summary {
   color: var(--text-muted);
-  font-size: 0.85em;
+  font-size: var(--tick-fs-meta);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
@@ -129,7 +140,7 @@
   gap: 8px;
   margin: 8px 0 4px;
   color: var(--text-muted);
-  font-size: 0.78em;
+  font-size: var(--tick-fs-meta);
 }
 .tick-divider::before,
 .tick-divider::after {
@@ -147,7 +158,6 @@
 .tick-project-group {
   display: flex;
   flex-direction: column;
-  gap: 0;
 }
 
 /* ── Task row ────────────────────────────────────────────────────────
@@ -165,7 +175,6 @@
   position: relative;
   touch-action: pan-y;
   background: var(--background-primary);
-  -webkit-tap-highlight-color: transparent;
   /* Allow children with overflow to truncate */
   min-width: 0;
   /* Single source of truth for swipe-reveal width: used by `.tick-swipe-action`
@@ -188,20 +197,18 @@
 
 /* Editing state — intentionally NO background or border change. The only
    visual cue is the text caret in the input, so the user perceives "I'm
-   editing the existing text" rather than "a card just appeared".
-   Belt-and-suspenders: defend against any Obsidian/UA stylesheet that
-   paints background/outline/box-shadow on the row tree while an input
-   inside is focused. `!important` on outline/box-shadow/border because
-   Obsidian's `:focus`/`:focus-within` rules win normal cascade. */
+   editing the existing text" rather than "a card just appeared". The
+   actual focus styling is on `.tick-feature-title-input:focus` (which
+   does fight Obsidian's `input:focus` rule). */
 .tick-today-row.is-editing,
 .tick-today-row.is-editing:hover,
 .tick-today-row.is-editing .tick-row-foreground,
 .tick-today-row.is-editing .tick-row-label {
   background: transparent;
   border-radius: 0;
-  outline: 0 !important;
-  box-shadow: none !important;
-  border: 0 !important;
+  outline: 0;
+  box-shadow: none;
+  border: 0;
 }
 
 /* Dim the done row's content (checkbox + title + project) but NOT the
@@ -268,7 +275,7 @@
   text-decoration: underline !important;
   text-underline-offset: 3px;
   font-weight: 500;
-  font-size: 0.9em;
+  font-size: var(--tick-fs-meta);
   appearance: none;
   -webkit-appearance: none;
   border: 0;
@@ -283,7 +290,7 @@
   /* Hidden until row is swiped */
   opacity: 0;
   pointer-events: none;
-  transition: opacity 100ms;
+  transition: opacity 120ms;
 }
 .tick-today-row.is-swipe-revealed .tick-swipe-action {
   opacity: 1;
@@ -292,7 +299,7 @@
 .tick-today-row.is-swipe-revealed .tick-row-foreground {
   /* row content slides left to reveal the delete button */
   transform: translateX(calc(-1 * var(--tick-swipe-px)));
-  transition: transform 200ms;
+  transition: transform 120ms;
 }
 .tick-today-row.is-swiping .tick-row-foreground {
   transition: none;
@@ -383,26 +390,23 @@
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.4;
-  font-size: 0.95em;
+  font-size: var(--tick-fs-body);
 }
 
 /* In-place edit input — visually identical to .tick-feature-title.
    Hard-reset every UA default (appearance, border, padding, box-shadow)
    so on iOS Safari the input doesn't get its tiny inset shadow or
-   default border. The caret is the only visual cue that we're editing. */
+   default border. The caret is the only visual cue that we're editing.
+   We also list `:focus` because Obsidian's core stylesheet paints
+   `box-shadow: 0 0 0 1px var(--background-modifier-border-focus)` on
+   `input:focus`, which the unprefixed reset can't beat by specificity. */
 .tick-feature-title-input,
-.tick-feature-title-input:focus,
-.tick-feature-title-input:focus-visible,
-.tick-feature-title-input:active,
-.tick-feature-title-input:hover {
+.tick-feature-title-input:focus {
   flex: 1;
   min-width: 0;
   width: auto;
   appearance: none;
   -webkit-appearance: none;
-  /* `!important` forced because Obsidian's core stylesheet paints
-     `box-shadow: 0 0 0 1px var(--background-modifier-border-focus)` on
-     `input:focus`, which our normal-cascade reset can't beat. */
   background: transparent !important;
   border: 0 !important;
   outline: 0 !important;
@@ -410,12 +414,11 @@
   padding: 0;
   margin: 0;
   font-family: inherit;
-  font-size: 0.95em;
+  font-size: var(--tick-fs-body);
   font-weight: inherit;
   line-height: 1.4;
   color: var(--text-normal);
   border-radius: 0;
-  -webkit-tap-highlight-color: transparent;
   /* iOS Safari gives `<input>` a UA min-height/intrinsic height that's
      taller than a sibling `<span>` with the same font/line-height. Pin
      height to the computed line-box so the row in edit/phantom mode is
@@ -430,7 +433,7 @@
    right-side formatting like "-1d @work". */
 .tick-day-marker {
   color: var(--text-faint);
-  font-size: 0.85em;
+  font-size: var(--tick-fs-meta);
   flex-shrink: 0;
   cursor: pointer;
 }
@@ -442,13 +445,13 @@
   align-items: baseline;
   gap: 1px;
   color: var(--text-muted);
-  font-size: 0.95em;
+  font-size: var(--tick-fs-body);
   cursor: pointer;
   flex-shrink: 1;
   min-width: 0;
 }
 .tick-project-prefix {
-  opacity: 0.55;
+  opacity: 0.5;
 }
 .tick-project-name {
   white-space: nowrap;
@@ -456,16 +459,18 @@
   text-overflow: ellipsis;
 }
 
-/* Hint texts */
-.tick-empty-hint,
-.tick-error-hint {
+/* Empty-list hint — centred block taking the natural empty space below
+   header. Used when no pending and no done tasks. */
+.tick-empty-hint {
   color: var(--text-muted);
-  font-size: 0.9em;
+  font-size: var(--tick-fs-meta);
   padding: 24px 12px;
   line-height: 1.5;
   text-align: center;
 }
 
+/* Read-error block (e.g. tasks file missing or malformed). Title in red,
+   sub-hint in muted small text directly underneath. */
 .tick-error {
   color: var(--text-error);
   text-align: center;
@@ -473,7 +478,9 @@
 }
 .tick-error-hint {
   color: var(--text-muted);
-  font-size: 0.85em;
+  font-size: var(--tick-fs-meta);
+  line-height: 1.5;
+  text-align: center;
   margin-top: 6px;
   padding: 6px 12px;
 }
@@ -482,17 +489,17 @@
    Note: padding stays tight; touch target comes from the wider checkbox +
    row click area, not from padding. */
 @media (max-width: 500px) {
+  /* Bump body type so task titles read at native size on phones; meta stays
+     at 0.85em (chips/markers don't need the bump). */
+  .tick-today-container {
+    --tick-fs-body: 1em;
+  }
+
   .tick-today-row {
     padding: 6px 0;
     /* Override the single swipe-px source. CSS rules above and JS read this
        — no other mobile overrides for swipe needed. */
     --tick-swipe-px: 80px;
-  }
-
-  .tick-feature-title,
-  .tick-feature-title-input,
-  .tick-project {
-    font-size: 1em;
   }
 
   .tick-checkbox-visual {
