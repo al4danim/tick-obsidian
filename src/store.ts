@@ -1,8 +1,8 @@
 import { App, normalizePath, TFile } from "obsidian";
-import { Task, parseLine, marshalLine, todayString, yesterdayString, splitProjectFromTitle } from "./parser";
+import { Task, parseLine, marshalLine, todayString, yesterdayString, splitProjectFromTitle, computeStreak, groupPendingByProject } from "./parser";
 
 // Re-export so existing imports from "./store" keep working.
-export { parseLine, marshalLine, todayString, yesterdayString, splitProjectFromTitle };
+export { parseLine, marshalLine, todayString, yesterdayString, splitProjectFromTitle, computeStreak, groupPendingByProject };
 export type { Task };
 
 // 8 hex chars. Random IDs avoid collisions when Mac and mobile both add tasks
@@ -139,37 +139,6 @@ export class Store {
     await this.writeLines(lines);
   }
 
-  // Walks back from today through the last 30 days, counting consecutive days
-  // with at least one done task. Stops at the first zero-completion day.
-  // Capped at 30; callers should display "30+" at the cap since we can't
-  // distinguish 30 from 31 with only 30 days of input.
-  //
-  // Limit: tasks.md only — we don't read archive.md (the Go-side tick-tui CLI
-  // owns the 7-day rolling sweep). On a vault where the user runs tick-tui
-  // daily, done tasks older than 7 days have moved to archive.md and won't
-  // count here. The TUI's stats panel is the source of truth for streaks
-  // longer than that window.
-  async computeStreak(): Promise<number> {
-    const { tasks } = await this.load();
-    const counts = new Map<string, number>();
-    for (const t of tasks) {
-      if (t.done && t.doneDate) {
-        counts.set(t.doneDate, (counts.get(t.doneDate) ?? 0) + 1);
-      }
-    }
-    let streak = 0;
-    const cursor = new Date();
-    for (let i = 0; i < 30; i++) {
-      const y = cursor.getFullYear();
-      const m = String(cursor.getMonth() + 1).padStart(2, "0");
-      const day = String(cursor.getDate()).padStart(2, "0");
-      const key = `${y}-${m}-${day}`;
-      if (!counts.has(key)) return streak;
-      streak++;
-      cursor.setDate(cursor.getDate() - 1);
-    }
-    return streak;
-  }
 }
 
 function findById(tasks: Task[], id: string): Task | null {

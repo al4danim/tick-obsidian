@@ -1,20 +1,69 @@
 import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
-import { Store, Task, todayString, yesterdayString, splitProjectFromTitle } from "./store";
+import { Store, Task, todayString, yesterdayString, splitProjectFromTitle, computeStreak, groupPendingByProject } from "./store";
+import { attachKeyboardScroll } from "./keyboard-scroll";
+import { SwipeController } from "./swipe-controller";
 
-export const VIEW_TYPE_TODAY = "tick-today";
+// String value is intentionally "tick-today" (not "tick") for back-compat with
+// saved leaf state from before the rename. Changing it would orphan existing
+// user layouts.
+export const VIEW_TYPE_TICK = "tick-today";
 
 interface ViewSettings {
   groupByProject: boolean;
   enableSwipe: boolean;
 }
 
+// Wire keydown (Enter → commit, Escape → cancel) and blur (intra-row focus
+// changes are ignored) to an input. The caller's onCommit/onCancel handle
+// all business logic; this helper is purely event plumbing.
+//
+// Blur ignores focus movements that stay inside `row` (e.g. moving from
+// title input to a sibling button) so we don't prematurely commit when the
+// user is just clicking another field in the same row.
+//
+// `cancelled` flag: Escape → onCancel re-renders → DOM is destroyed → the
+// dying input fires a final blur. Without this guard that blur would be
+// routed to onCommit and accidentally save the half-edited value. The
+// caller's onCommit guards against double-commits via its own `committed`
+// flag, but it can't tell "real blur" from "post-cancel blur" without help
+// from this helper.
+function wireInputCommit(
+  input: HTMLInputElement,
+  row: HTMLElement,
+  opts: {
+    onCommit: () => void | Promise<void>;
+    onCancel: () => void;
+  }
+): void {
+  let cancelled = false;
 
-export class TodayView extends ItemView {
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      void opts.onCommit();
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      if (cancelled) return;
+      cancelled = true;
+      opts.onCancel();
+    }
+  });
+
+  input.addEventListener("blur", (ev) => {
+    if (cancelled) return;
+    const next = ev.relatedTarget as HTMLElement | null;
+    if (next && row.contains(next)) return;
+    void opts.onCommit();
+  });
+}
+
+export class TickView extends ItemView {
   private store: Store;
   private rendering = false;
   private tasks: Task[] = [];
   private streak = 0;
   private getViewSettings: () => ViewSettings;
+  private swipe: SwipeController;
 
   // ── Edit / add state ────────────────────────────────────────────────
   // Which existing task (by id) is currently being edited in-place. null = no edit.
@@ -22,10 +71,6 @@ export class TodayView extends ItemView {
   // Sticky add: when true, a phantom row sits at the top of the list. Saving
   // an entry re-opens a fresh phantom (TUI parity); empty Enter or Esc exits.
   private phantomActive = false;
-
-  // ── Swipe state ─────────────────────────────────────────────────────
-  // Which row currently has its Delete button revealed (only one at a time).
-  private swipeRevealedId: string | null = null;
 
   // Track focus on edit / phantom inputs so we can keep them above the
   // iOS keyboard. The hard part is that Obsidian's WKWebView does NOT
@@ -39,10 +84,11 @@ export class TodayView extends ItemView {
     super(leaf);
     this.store = store;
     this.getViewSettings = getViewSettings;
+    this.swipe = new SwipeController(this.contentEl);
   }
 
   getViewType(): string {
-    return VIEW_TYPE_TODAY;
+    return VIEW_TYPE_TICK;
   }
 
   getDisplayText(): string {
@@ -61,87 +107,6 @@ export class TodayView extends ItemView {
     this.contentEl.empty();
   }
 
-  // Bind keyboard-avoidance handlers to a focusable input.
-  //
-  // On focus we add `.tick-keyboard-open` (CSS bumps `padding-bottom` to
-  // 60vh so the container has enough scroll room past its natural last
-  // row to push any input above the keyboard) and then call `adjust()`
-  // from several signals — see comment at the trigger sites for why none
-  // of them is sufficient on its own.
-  //
-  // `adjust()` scrolls the container by the gap between the input's
-  // bottom and the visual viewport's bottom — i.e. it pushes the input
-  // up just enough to clear the keyboard, with 16px breathing room. It's
-  // idempotent: once the input is in position the next call computes
-  // overflow=0 and no-ops, so it's safe to fire from multiple triggers.
-  //
-  // Why we manage scrollTop ourselves instead of `scrollIntoView({ block:
-  // "end" })`: in Obsidian's iOS WKWebView the layout viewport doesn't
-  // shrink when the keyboard appears, so the scrollport's "end" sits
-  // behind the keyboard. `scrollIntoView({ block: "end" })` will dutifully
-  // park the input there — which is what we used to do, and which is why
-  // beta.17–23 all failed in slightly different ways. visualViewport is
-  // the only signal that actually reflects what the user can see.
-  private bindKeyboardScroll(input: HTMLInputElement): void {
-    const adjust = () => {
-      if (document.activeElement !== input) return;
-      const vv = window.visualViewport;
-      const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
-      const inputRect = input.getBoundingClientRect();
-      const overflow = inputRect.bottom + 16 - visibleBottom;
-      if (overflow > 0) {
-        this.contentEl.scrollTop += overflow;
-      }
-    };
-
-    let vvHandler: (() => void) | null = null;
-    let resizeObs: ResizeObserver | null = null;
-
-    input.addEventListener("focus", () => {
-      this.contentEl.classList.add("tick-keyboard-open");
-
-      // Multiple triggers because no single signal is reliable across all
-      // WebView versions / Obsidian builds:
-      //   - rAF: layout settled, but keyboard not up yet — usually a no-op
-      //     but cheap insurance for the rare case iOS already auto-scrolled.
-      //   - setTimeout(400): iOS keyboard animation is ~250–350ms, so by
-      //     400ms vv.height should reflect the keyboard. This is our
-      //     guaranteed-to-fire baseline.
-      //   - visualViewport.resize: best signal — fires on keyboard up,
-      //     down, rotation, split-screen, accessory-bar toggling.
-      //   - ResizeObserver on the container: belt-and-suspenders fallback
-      //     for the (rare) case the layout viewport itself shrinks.
-      requestAnimationFrame(adjust);
-      setTimeout(adjust, 400);
-
-      if (window.visualViewport) {
-        vvHandler = adjust;
-        window.visualViewport.addEventListener("resize", vvHandler);
-      }
-
-      if (typeof ResizeObserver !== "undefined") {
-        resizeObs = new ResizeObserver(adjust);
-        resizeObs.observe(this.contentEl);
-      }
-    });
-
-    input.addEventListener("blur", () => {
-      if (vvHandler && window.visualViewport) {
-        window.visualViewport.removeEventListener("resize", vvHandler);
-        vvHandler = null;
-      }
-      if (resizeObs) {
-        resizeObs.disconnect();
-        resizeObs = null;
-      }
-      setTimeout(() => {
-        if (!this.contentEl.contains(document.activeElement)) {
-          this.contentEl.classList.remove("tick-keyboard-open");
-        }
-      }, 100);
-    });
-  }
-
   async refresh(): Promise<void> {
     await this.render();
   }
@@ -157,7 +122,7 @@ export class TodayView extends ItemView {
     try {
       const data = await this.store.load();
       this.tasks = data.tasks;
-      this.streak = await this.store.computeStreak();
+      this.streak = computeStreak(data.tasks);
     } catch (e) {
       const errEl = container.createDiv({ cls: "tick-error" });
       errEl.createEl("p", { text: `Failed to load: ${(e as Error).message}` });
@@ -248,28 +213,9 @@ export class TodayView extends ItemView {
       return;
     }
 
-    const groups = new Map<string | null, Task[]>();
-    const firstSeen = new Map<string | null, number>();
-    pending.forEach((t, i) => {
-      const key = t.project ?? null;
-      if (!groups.has(key)) {
-        groups.set(key, []);
-        firstSeen.set(key, i);
-      }
-      groups.get(key)!.push(t);
-    });
-
-    const ordered = Array.from(groups.entries()).sort((a, b) => {
-      if (a[0] === null && b[0] !== null) return 1;
-      if (b[0] === null && a[0] !== null) return -1;
-      const sizeDiff = b[1].length - a[1].length;
-      if (sizeDiff !== 0) return sizeDiff;
-      return (firstSeen.get(a[0]) ?? 0) - (firstSeen.get(b[0]) ?? 0);
-    });
-
-    for (const [, tasks] of ordered) {
+    for (const group of groupPendingByProject(pending)) {
       const groupEl = body.createDiv({ cls: "tick-project-group" });
-      for (const t of tasks) this.renderRow(groupEl, t);
+      for (const t of group) this.renderRow(groupEl, t);
     }
   }
 
@@ -304,7 +250,7 @@ export class TodayView extends ItemView {
       "tick-today-row" +
       (task.done ? " done" : "") +
       (isEditing ? " is-editing" : "") +
-      (this.swipeRevealedId === task.id ? " is-swipe-revealed" : "");
+      (this.swipe.isRevealed(task.id) ? " is-swipe-revealed" : "");
 
     const row = parent.createDiv({
       cls,
@@ -337,7 +283,7 @@ export class TodayView extends ItemView {
     });
     visual.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      this.closeSwipeIfOpen();
+      this.swipe.closeIfOpen();
       checkbox.click();
     });
 
@@ -369,16 +315,16 @@ export class TodayView extends ItemView {
     }
 
     if (this.getViewSettings().enableSwipe && task.id !== null && !isEditing) {
-      this.attachSwipeHandlers(row, fg, task);
+      this.swipe.attach(row, fg, task.id);
     }
   }
 
   private renderViewFields(label: HTMLElement, task: Task, daysAgo: number): void {
     const enterEdit = (ev: Event) => {
       ev.stopPropagation();
-      if (this.swipeRevealedId !== null) {
+      if (this.swipe.isAnyRevealed()) {
         // First tap on a row while another is swiped open just closes the swipe.
-        this.closeSwipeIfOpen();
+        this.swipe.closeIfOpen();
         return;
       }
       if (task.id === null) {
@@ -421,13 +367,12 @@ export class TodayView extends ItemView {
       value: initial,
     });
     titleInput.dataset.tickRole = "title-input";
-    this.bindKeyboardScroll(titleInput);
+    attachKeyboardScroll(this.contentEl, titleInput);
 
     let committed = false;
-    let cancelled = false;
 
     const commit = async () => {
-      if (committed || cancelled) return;
+      if (committed) return;
       committed = true;
       const raw = titleInput.value.trim();
       const split = splitProjectFromTitle(raw);
@@ -461,27 +406,12 @@ export class TodayView extends ItemView {
     };
 
     const cancel = () => {
-      if (committed || cancelled) return;
-      cancelled = true;
+      if (committed) return;
       this.editingId = null;
       void this.render();
     };
 
-    titleInput.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter") {
-        ev.preventDefault();
-        void commit();
-      } else if (ev.key === "Escape") {
-        ev.preventDefault();
-        cancel();
-      }
-    });
-
-    titleInput.addEventListener("blur", (ev) => {
-      const next = ev.relatedTarget as HTMLElement | null;
-      if (next && row.contains(next)) return;
-      void commit();
-    });
+    wireInputCommit(titleInput, row, { onCommit: commit, onCancel: cancel });
   }
 
   // ── Phantom add (sticky) ────────────────────────────────────────────
@@ -503,7 +433,7 @@ export class TodayView extends ItemView {
       attr: { placeholder: "New task... @project" },
     });
     titleInput.dataset.tickRole = "phantom-title";
-    this.bindKeyboardScroll(titleInput);
+    attachKeyboardScroll(this.contentEl, titleInput);
 
     let committing = false;
 
@@ -533,21 +463,7 @@ export class TodayView extends ItemView {
       void this.render();
     };
 
-    titleInput.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter") {
-        ev.preventDefault();
-        void commit();
-      } else if (ev.key === "Escape") {
-        ev.preventDefault();
-        cancel();
-      }
-    });
-
-    titleInput.addEventListener("blur", (ev) => {
-      const next = ev.relatedTarget as HTMLElement | null;
-      if (next && row.contains(next)) return;
-      void commit();
-    });
+    wireInputCommit(titleInput, row, { onCommit: commit, onCancel: cancel });
   }
 
   // After re-render the DOM is fresh; if we're in edit / phantom mode, restore
@@ -555,7 +471,7 @@ export class TodayView extends ItemView {
   private refocusActiveInput(): void {
     if (this.editingId !== null) {
       const row = this.contentEl.querySelector(
-        `[data-task-id="${cssEscape(this.editingId)}"]`
+        `[data-task-id="${CSS.escape(this.editingId)}"]`
       );
       if (!row) return;
       const target = row.querySelector('[data-tick-role="title-input"]') as HTMLInputElement | null;
@@ -580,118 +496,6 @@ export class TodayView extends ItemView {
     }
   }
 
-  // ── Swipe-to-reveal-Delete ──────────────────────────────────────────
-
-  // Left swipe (dx < 0) only. Right swipe is intentionally ignored to avoid
-  // colliding with Obsidian mobile's "close right panel" edge gesture. Past
-  // threshold the row stays revealed showing a Delete button (iOS Mail style);
-  // user taps Delete to actually delete (with 5s undo Notice).
-  private attachSwipeHandlers(row: HTMLElement, fg: HTMLElement, task: Task): void {
-    if (!("ontouchstart" in window)) return;
-
-    const REVEAL_THRESHOLD = 40;  // px past which we'll commit to revealed state
-    const DIRECTION_LOCK = 8;
-
-    let startX = 0;
-    let startY = 0;
-    let currentX = 0;
-    let trackingHorizontal: boolean | null = null;
-    // Reveal width — single source of truth lives in CSS as `--tick-swipe-px`
-    // on `.tick-today-row` (88px desktop / 80px mobile). Read once per gesture
-    // so handheld orientation flips between gestures pick up the new value
-    // without polling on every touchmove.
-    let revealPx = 88;
-
-    const onStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      currentX = 0;
-      trackingHorizontal = null;
-      const cssPx = parseFloat(
-        getComputedStyle(row).getPropertyValue("--tick-swipe-px"),
-      );
-      if (Number.isFinite(cssPx) && cssPx > 0) revealPx = cssPx;
-    };
-
-    const onMove = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      const dx = e.touches[0].clientX - startX;
-      const dy = e.touches[0].clientY - startY;
-
-      if (trackingHorizontal === null) {
-        if (Math.abs(dx) < DIRECTION_LOCK && Math.abs(dy) < DIRECTION_LOCK) return;
-        trackingHorizontal = Math.abs(dx) > Math.abs(dy);
-      }
-
-      if (!trackingHorizontal) return;
-
-      // RIGHT-SWIPE GUARD: if user is dragging right, ignore entirely. This
-      // lets Obsidian's edge gesture (close panel) work without our row
-      // stealing the touch.
-      if (dx > 0 && this.swipeRevealedId !== task.id) return;
-
-      e.preventDefault();
-      row.classList.add("is-swiping");
-
-      // Clamp to the same width CSS will snap to, so finger position and
-      // resting position never disagree (no last-pixel rebound on release).
-      currentX = Math.max(-revealPx, Math.min(0, dx));
-      fg.style.transform = `translateX(${currentX}px)`;
-    };
-
-    const onEnd = () => {
-      if (!trackingHorizontal) {
-        row.classList.remove("is-swiping");
-        fg.style.transform = "";
-        return;
-      }
-
-      row.classList.remove("is-swiping");
-      fg.style.transform = ""; // hand back to CSS class-driven transform
-
-      if (currentX < -REVEAL_THRESHOLD) {
-        // Commit reveal. Close any other revealed row first.
-        if (this.swipeRevealedId !== null && this.swipeRevealedId !== task.id) {
-          const other = this.contentEl.querySelector(
-            `[data-task-id="${cssEscape(this.swipeRevealedId)}"]`
-          );
-          other?.classList.remove("is-swipe-revealed");
-        }
-        this.swipeRevealedId = task.id;
-        row.classList.add("is-swipe-revealed");
-      } else {
-        // Snap back.
-        this.swipeRevealedId = null;
-        row.classList.remove("is-swipe-revealed");
-      }
-    };
-
-    row.addEventListener("touchstart", onStart, { passive: true });
-    row.addEventListener("touchmove", onMove, { passive: false });
-    row.addEventListener("touchend", onEnd);
-    row.addEventListener("touchcancel", onEnd);
-
-    // Tapping anywhere else on the document closes a revealed swipe.
-    // We hook this once per row, but it only fires while this row is the
-    // revealed one (guarded by the check inside).
-    row.addEventListener("click", (ev) => {
-      // The Delete button has its own click handler with stopPropagation.
-      if (this.swipeRevealedId === task.id && !(ev.target as HTMLElement).closest(".tick-swipe-action")) {
-        this.closeSwipeIfOpen();
-      }
-    });
-  }
-
-  private closeSwipeIfOpen(): void {
-    if (this.swipeRevealedId === null) return;
-    const row = this.contentEl.querySelector(
-      `[data-task-id="${cssEscape(this.swipeRevealedId)}"]`
-    );
-    row?.classList.remove("is-swipe-revealed");
-    this.swipeRevealedId = null;
-  }
-
   // ── Delete with undo ────────────────────────────────────────────────
 
   private async handleDelete(task: Task): Promise<void> {
@@ -705,7 +509,7 @@ export class TodayView extends ItemView {
     }
     if (!result) return;
 
-    this.swipeRevealedId = null;
+    this.swipe.closeIfOpen();
     await this.refresh();
 
     // 5s Undo Notice. Build a DocumentFragment so we can attach a click handler
@@ -730,16 +534,6 @@ export class TodayView extends ItemView {
       }
     });
   }
-}
-
-// Best-effort polyfill for CSS.escape() — used when building selectors with
-// task IDs (which are 8-char hex so usually safe, but legacy IDs may include
-// other chars).
-function cssEscape(value: string): string {
-  if (typeof (window as { CSS?: { escape?: (v: string) => string } }).CSS?.escape === "function") {
-    return (window as unknown as { CSS: { escape: (v: string) => string } }).CSS.escape(value);
-  }
-  return value.replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
 }
 
 function truncateForNotice(s: string): string {

@@ -1,7 +1,7 @@
 import { Plugin, TAbstractFile, normalizePath } from "obsidian";
 import { TickSettings, DEFAULT_SETTINGS, TickSettingTab } from "./settings";
 import { Store } from "./store";
-import { TodayView, VIEW_TYPE_TODAY } from "./today-view";
+import { TickView, VIEW_TYPE_TICK } from "./tick-view";
 
 const HIDE_STYLE_ID = "tick-hide-folder-style";
 
@@ -15,9 +15,9 @@ export default class TickPlugin extends Plugin {
     this.store = new Store(this.app, this.settings.tasksPath);
 
     this.registerView(
-      VIEW_TYPE_TODAY,
+      VIEW_TYPE_TICK,
       (leaf) =>
-        new TodayView(leaf, this.store, () => ({
+        new TickView(leaf, this.store, () => ({
           groupByProject: this.settings.groupByProject,
           enableSwipe: this.settings.enableSwipe,
         }))
@@ -36,14 +36,14 @@ export default class TickPlugin extends Plugin {
     );
 
     this.addRibbonIcon("check-square", "Tick", () => {
-      void this.openTodayView();
+      void this.openTickView();
     });
 
     this.addCommand({
       id: "tick-list",
       name: "List",
       callback: () => {
-        void this.openTodayView();
+        void this.openTickView();
       },
     });
 
@@ -53,7 +53,7 @@ export default class TickPlugin extends Plugin {
   }
 
   async onunload(): Promise<void> {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_TODAY);
+    this.app.workspace.detachLeavesOfType(VIEW_TYPE_TICK);
     this.removeHideRule();
   }
 
@@ -68,23 +68,23 @@ export default class TickPlugin extends Plugin {
     this.applyHideRule();
   }
 
-  private async openTodayView(): Promise<TodayView | null> {
+  private async openTickView(): Promise<TickView | null> {
     const { workspace } = this.app;
 
-    let leaf = workspace.getLeavesOfType(VIEW_TYPE_TODAY)[0];
+    let leaf = workspace.getLeavesOfType(VIEW_TYPE_TICK)[0];
     if (!leaf) {
       leaf = workspace.getRightLeaf(false) ?? workspace.getLeaf(true);
-      await leaf.setViewState({ type: VIEW_TYPE_TODAY, active: true });
+      await leaf.setViewState({ type: VIEW_TYPE_TICK, active: true });
     }
     workspace.revealLeaf(leaf);
     const view = leaf.view;
-    return view instanceof TodayView ? view : null;
+    return view instanceof TickView ? view : null;
   }
 
   refreshOpenViews(): void {
-    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TODAY)) {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TICK)) {
       const view = leaf.view;
-      if (view instanceof TodayView) {
+      if (view instanceof TickView) {
         void view.refresh();
       }
     }

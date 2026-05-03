@@ -109,6 +109,64 @@ function formatDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+// Walks back from today through the last 30 days counting consecutive days
+// with at least one done task. Stops at the first zero-completion day.
+// Capped at 30; callers should display "30+" at the cap since we can't
+// distinguish 30 from 31 with only 30 days of input.
+//
+// Limit: tasks.md only — we don't read archive.md (the Go-side tick-tui CLI
+// owns the 7-day rolling sweep). On a vault where the user runs tick-tui
+// daily, done tasks older than 7 days have moved to archive.md and won't
+// count here. The TUI's stats panel is the source of truth for streaks
+// longer than that window.
+export function computeStreak(tasks: Task[]): number {
+  const counts = new Map<string, number>();
+  for (const t of tasks) {
+    if (t.done && t.doneDate) {
+      counts.set(t.doneDate, (counts.get(t.doneDate) ?? 0) + 1);
+    }
+  }
+  let streak = 0;
+  const cursor = new Date();
+  for (let i = 0; i < 30; i++) {
+    const y = cursor.getFullYear();
+    const m = String(cursor.getMonth() + 1).padStart(2, "0");
+    const day = String(cursor.getDate()).padStart(2, "0");
+    const key = `${y}-${m}-${day}`;
+    if (!counts.has(key)) return streak;
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+// Groups pending tasks by project for display. Returns an ordered array of
+// groups (each group = an array of tasks sharing the same project).
+// Ordering: null project always last; otherwise largest group first, ties
+// broken by the group's first-seen position in the input list.
+export function groupPendingByProject(pending: Task[]): Task[][] {
+  const groups = new Map<string | null, Task[]>();
+  const firstSeen = new Map<string | null, number>();
+  pending.forEach((t, i) => {
+    const key = t.project ?? null;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      firstSeen.set(key, i);
+    }
+    groups.get(key)!.push(t);
+  });
+
+  return Array.from(groups.entries())
+    .sort((a, b) => {
+      if (a[0] === null && b[0] !== null) return 1;
+      if (b[0] === null && a[0] !== null) return -1;
+      const sizeDiff = b[1].length - a[1].length;
+      if (sizeDiff !== 0) return sizeDiff;
+      return (firstSeen.get(a[0]) ?? 0) - (firstSeen.get(b[0]) ?? 0);
+    })
+    .map(([, tasks]) => tasks);
+}
+
 // Split "title @project" trailing project (mirrors Go-side helper).
 // Returns { title, project } where project may be null.
 //
