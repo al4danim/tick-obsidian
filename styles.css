@@ -36,11 +36,16 @@
   padding-bottom: 60vh !important;
 }
 
-/* Leave a comfortable 80px gap above the input when scrollIntoView() docks
-   it to the top of the container — otherwise it sits flush under the
-   header / status bar. */
+/* Park the focused input just above the iOS keyboard with context rows
+   visible above it. `scroll-margin-bottom: 50vh` tells the browser to
+   reserve ~half the viewport below the input when scrollIntoView({ block:
+   "end" }) docks it; combined with the 60vh container padding-bottom this
+   stops the input above the keyboard region without wasting the entire
+   viewport on empty padding. The 80px top margin leaves header room when
+   the user is editing a top-of-list row. */
 .tick-feature-title-input {
   scroll-margin-top: 80px;
+  scroll-margin-bottom: 50vh;
 }
 
 /* Header bar */
