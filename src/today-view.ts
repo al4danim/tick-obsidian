@@ -76,13 +76,39 @@ export class TodayView extends ItemView {
     this.keyboardScrollHandler = null;
   }
 
-  // If the focused edit / phantom input sits below the visualViewport's
-  // visible area (i.e. the iOS keyboard is covering it), scroll the
-  // container so the input lands above the keyboard with a small margin.
-  // No-op when nothing is being edited or when the input is already visible.
+  // Keep the focused edit / phantom input visible above the iOS keyboard.
+  //
+  // Two-step fix because plain `scrollBy` can't scroll past the container's
+  // natural content height — when the edited row is the last one, the
+  // container is already at scroll-bottom and the input stays under the
+  // keyboard:
+  //
+  //   1. Inflate the container's `padding-bottom` by the keyboard height.
+  //      This adds empty scrollable space below the last row so we *can*
+  //      scroll the input upward past where it would naturally sit.
+  //   2. If the input's bounding rect is below the visualViewport's safe
+  //      bottom, scroll by the overlap.
+  //
+  // When the keyboard hides (resize fires with keyboardHeight === 0), the
+  // padding is cleared so the layout snaps back.
   private scrollEditedInputIntoView(): void {
     const vv = window.visualViewport;
     if (!vv) return;
+
+    // iOS: window.innerHeight stays constant when the keyboard opens;
+    // visualViewport.height shrinks. Difference ≈ keyboard height.
+    const keyboardHeight = Math.max(
+      0,
+      window.innerHeight - vv.height - vv.offsetTop,
+    );
+
+    // Inflate or clear scroll room. 32px extra so the input sits comfortably
+    // above the keyboard, not glued to its top edge.
+    this.contentEl.style.paddingBottom =
+      keyboardHeight > 0 ? `${keyboardHeight + 32}px` : "";
+
+    if (keyboardHeight === 0) return;
+
     let target: HTMLInputElement | null = null;
     if (this.editingId !== null) {
       target = this.contentEl.querySelector(
@@ -96,10 +122,7 @@ export class TodayView extends ItemView {
     if (!target) return;
 
     const rect = target.getBoundingClientRect();
-    // visualViewport.offsetTop is non-zero on iOS when the page has been
-    // scrolled by Safari's own keyboard-avoidance (rare in our custom
-    // container, but include it to be safe).
-    const safeBottom = vv.offsetTop + vv.height - 12;
+    const safeBottom = vv.offsetTop + vv.height - 16;
     if (rect.bottom > safeBottom) {
       this.contentEl.scrollBy({
         top: rect.bottom - safeBottom,
