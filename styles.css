@@ -36,16 +36,15 @@
   padding-bottom: 60vh !important;
 }
 
-/* Park the focused input just above the iOS keyboard with context rows
-   visible above it. `scroll-margin-bottom: 50vh` tells the browser to
-   reserve ~half the viewport below the input when scrollIntoView({ block:
-   "end" }) docks it; combined with the 60vh container padding-bottom this
-   stops the input above the keyboard region without wasting the entire
-   viewport on empty padding. The 80px top margin leaves header room when
-   the user is editing a top-of-list row. */
+/* Park the focused input just above the iOS keyboard. iOS WKWebView
+   shrinks the WebView's height when the keyboard opens, so the container's
+   `clientHeight` already excludes the keyboard area — `block: "end"`
+   alone docks the input to the (now smaller) viewport's bottom, which is
+   right above the keyboard. We only need a few pixels of breathing room.
+   The 80px top margin still applies when editing a top-of-list row. */
 .tick-feature-title-input {
   scroll-margin-top: 80px;
-  scroll-margin-bottom: 50vh;
+  scroll-margin-bottom: 16px;
 }
 
 /* Header bar */
@@ -170,6 +169,14 @@
   .tick-today-row:hover {
     background: var(--background-modifier-hover);
   }
+}
+
+/* When a done row enters edit mode, restore full opacity so the input
+   text reads in normal `--text-normal` rather than dimmed-to-50%. The
+   line-through styling targets `.tick-feature-title` (a span), which
+   doesn't render in edit mode anyway, so no separate reset needed there. */
+.tick-today-row.done.is-editing {
+  opacity: 1;
 }
 
 /* Belt-and-suspenders: even if some Obsidian/UA stylesheet paints the row
