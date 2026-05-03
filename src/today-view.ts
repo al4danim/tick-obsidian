@@ -146,12 +146,6 @@ export class TodayView extends ItemView {
     await this.render();
   }
 
-  // Public hook for the "Add todo" command — opens sticky add at the top.
-  startAdd(): void {
-    this.phantomActive = true;
-    void this.render();
-  }
-
   private async render(): Promise<void> {
     if (this.rendering) return;
     this.rendering = true;

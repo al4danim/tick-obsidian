@@ -40,17 +40,8 @@ export default class TickPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "tick-add-todo",
-      name: "Add todo",
-      callback: async () => {
-        const view = await this.openTodayView();
-        view?.startAdd();
-      },
-    });
-
-    this.addCommand({
-      id: "tick-open-today",
-      name: "Open today",
+      id: "tick-list",
+      name: "List",
       callback: () => {
         void this.openTodayView();
       },
